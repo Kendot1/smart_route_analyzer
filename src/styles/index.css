@@ -1,0 +1,36 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+@import './animations.css';
+
+/* Leaflet custom styles */
+.custom-div-icon {
+  background: none;
+  border: none;
+}
+
+.leaflet-container {
+  font-family: inherit;
+}
+
+/* Mountain marker styles */
+.mountain-marker {
+  background: none !important;
+  border: none !important;
+}
+
+.mountain-tooltip {
+  background: linear-gradient(135deg, #d97706, #b45309) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+  white-space: nowrap !important;
+}
+
+.mountain-tooltip::before {
+  border-top-color: #b45309 !important;
+}
