@@ -208,14 +208,35 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
 
         const marker = L.marker([lat, lng], { icon: greenIcon }).addTo(map);
         marker.bindPopup(
-          '<div style="font-weight: 600; color: #059669; font-size: 14px;">Your Location</div>' +
-          '<div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Click on map to set destination</div>' +
-          '<div style="font-size: 11px; color: #9ca3af; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb;">Lat: ' + lat.toFixed(5) + '<br/>Lon: ' + lng.toFixed(5) + '</div>',
+          `<div style="font-weight: 600; color: #059669; font-size: 14px;">Your Location</div>
+           <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Fetching local weather...</div>
+           <div style="font-size: 11px; color: #9ca3af; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb;">Lat: ${lat.toFixed(5)}<br/>Lon: ${lng.toFixed(5)}</div>`,
           { className: 'custom-popup' }
         ).openPopup();
         
         setOriginMarker(marker);
         setClickMode('destination');
+
+        // Fetch hyper-local weather for the user's GPS coordinates
+        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation`)
+          .then(res => res.json())
+          .then(data => {
+            const temp = Math.round(data.current.temperature_2m);
+            const rain = data.current.precipitation;
+            const isHot = temp > 31;
+            const isRaining = rain > 0;
+            const condition = isRaining ? 'rain' : isHot ? 'hot' : 'clear';
+            const icon = condition === 'rain' ? '🌧️' : condition === 'hot' ? '🌡️' : '☀️';
+            
+            marker.setPopupContent(
+              `<div style="font-weight: 600; color: #059669; font-size: 14px;">Your Location</div>
+               <div style="font-size: 13px; color: #4b5563; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                 <span>${icon}</span> <b>${temp}°C</b> - ${condition.toUpperCase()}
+               </div>
+               <div style="font-size: 11px; color: #9ca3af; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb;">Click on map to set destination</div>`
+            );
+          })
+          .catch(err => console.error("Local weather fetch failed:", err));
         
         if (destMarker) {
           const destPos = destMarker.getLatLng();
@@ -259,14 +280,35 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
 
         const marker = L.marker([lat, lng], { icon: greenIcon }).addTo(map);
         marker.bindPopup(
-          '<div style="font-weight: 600; color: #059669; font-size: 14px;">Mock Location</div>' +
-          '<div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Click on map to set destination</div>' +
-          '<div style="font-size: 11px; color: #9ca3af; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb;">Lat: ' + lat.toFixed(5) + '<br/>Lon: ' + lng.toFixed(5) + '</div>',
+          `<div style="font-weight: 600; color: #059669; font-size: 14px;">Mock Location</div>
+           <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Fetching local weather...</div>
+           <div style="font-size: 11px; color: #9ca3af; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb;">Lat: ${lat.toFixed(5)}<br/>Lon: ${lng.toFixed(5)}</div>`,
           { className: 'custom-popup' }
         ).openPopup();
         
         setOriginMarker(marker);
         setClickMode('destination');
+
+        // Fetch hyper-local weather for the mock coordinates
+        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation`)
+          .then(res => res.json())
+          .then(data => {
+            const temp = Math.round(data.current.temperature_2m);
+            const rain = data.current.precipitation;
+            const isHot = temp > 31;
+            const isRaining = rain > 0;
+            const condition = isRaining ? 'rain' : isHot ? 'hot' : 'clear';
+            const icon = condition === 'rain' ? '🌧️' : condition === 'hot' ? '🌡️' : '☀️';
+            
+            marker.setPopupContent(
+              `<div style="font-weight: 600; color: #059669; font-size: 14px;">Mock Location</div>
+               <div style="font-size: 13px; color: #4b5563; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                 <span>${icon}</span> <b>${temp}°C</b> - ${condition.toUpperCase()}
+               </div>
+               <div style="font-size: 11px; color: #9ca3af; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb;">Click on map to set destination</div>`
+            );
+          })
+          .catch(err => console.error("Local weather fetch failed:", err));
         
         if (destMarker) {
           const destPos = destMarker.getLatLng();
@@ -306,47 +348,91 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
 
     // Add Regional Weather Stations to give visual context of what places are hot/raining
     const weatherStations = [
-      { name: 'Baguio', lat: 16.4023, lon: 120.5960, temp: 18, condition: 'rain' },
-      { name: 'Metro Manila', lat: 14.5995, lon: 120.9842, temp: 34, condition: 'hot' },
-      { name: 'Cebu City', lat: 10.3157, lon: 123.8854, temp: 31, condition: 'clear' },
-      { name: 'Davao City', lat: 7.1907, lon: 125.4553, temp: 27, condition: 'rain' },
-      { name: 'Legazpi', lat: 13.1391, lon: 123.7438, temp: 33, condition: 'hot' },
-      { name: 'Puerto Princesa', lat: 9.7392, lon: 118.7353, temp: 29, condition: 'clear' },
-      { name: 'Tuguegarao', lat: 17.6185, lon: 121.7280, temp: 36, condition: 'hot' },
-      { name: 'Batanes', lat: 20.4500, lon: 121.9667, temp: 22, condition: 'rain' }
+      { name: 'Baguio', lat: 16.4023, lon: 120.5960 },
+      { name: 'Metro Manila', lat: 14.5995, lon: 120.9842 },
+      { name: 'Cebu City', lat: 10.3157, lon: 123.8854 },
+      { name: 'Davao City', lat: 7.1907, lon: 125.4553 },
+      { name: 'Legazpi', lat: 13.1391, lon: 123.7438 },
+      { name: 'Puerto Princesa', lat: 9.7392, lon: 118.7353 },
+      { name: 'Tuguegarao', lat: 17.6185, lon: 121.7280 },
+      { name: 'Batanes', lat: 20.4500, lon: 121.9667 }
     ];
+    
+    // Fetch real weather data from Open-Meteo API for accuracy
+    const lats = weatherStations.map(s => s.lat).join(',');
+    const lons = weatherStations.map(s => s.lon).join(',');
 
-    weatherStations.forEach(station => {
-      const iconHtml = station.condition === 'rain'
-        ? `<div style="background-color: #3b82f6; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
-             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>
-           </div>`
-        : station.condition === 'hot'
-        ? `<div style="background-color: #ef4444; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
-             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>
-           </div>`
-        : `<div style="background-color: #f59e0b; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(245, 158, 11, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
-             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-           </div>`;
+    const renderWeatherMarkers = (stations: any[], source: 'api' | 'mock') => {
+      stations.forEach(station => {
+        const isHot = station.temp > 31;
+        const isRaining = station.rain > 0;
+        const condition = isRaining ? 'rain' : isHot ? 'hot' : 'clear';
 
-      const wIcon = L.divIcon({
-        className: 'regional-weather',
-        html: iconHtml,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        const iconHtml = condition === 'rain'
+          ? `<div style="background-color: #3b82f6; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
+               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>
+             </div>`
+          : condition === 'hot'
+          ? `<div style="background-color: #ef4444; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
+               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>
+             </div>`
+          : `<div style="background-color: #f59e0b; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(245, 158, 11, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
+               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+             </div>`;
+
+        const wIcon = L.divIcon({
+          className: 'regional-weather',
+          html: iconHtml,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const statusLabel = source === 'mock' ? ' (Offline Mode)' : '';
+
+        L.marker([station.lat, station.lon], { icon: wIcon, zIndexOffset: 500 })
+          .bindPopup(
+            `<div style="font-weight: 600; color: #1f2937; font-size: 14px; margin-bottom: 4px;">${station.name}</div>
+             <div style="font-size: 12px; color: #4b5563;">
+               <span style="display:inline-block; width: 60px;">Temp:</span> <b>${station.temp}°C</b><br/>
+               <span style="display:inline-block; width: 60px;">Status:</span> <b>${condition.toUpperCase()}${statusLabel}</b>
+             </div>`,
+            { className: 'custom-popup' }
+          )
+          .addTo(map);
       });
+    };
 
-      L.marker([station.lat, station.lon], { icon: wIcon, zIndexOffset: 500 })
-        .bindPopup(
-          `<div style="font-weight: 600; color: #1f2937; font-size: 14px; margin-bottom: 4px;">${station.name}</div>
-           <div style="font-size: 12px; color: #4b5563;">
-             <span style="display:inline-block; width: 60px;">Temp:</span> <b>${station.temp}°C</b><br/>
-             <span style="display:inline-block; width: 60px;">Status:</span> <b>${station.condition.toUpperCase()}</b>
-           </div>`,
-          { className: 'custom-popup' }
-        )
-        .addTo(map);
-    });
+    // Use Promise.all to fetch individual API requests, bypassing Open-Meteo's fragile multi-location query parser
+    const fetchPromises = weatherStations.map(station => 
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${station.lat}&longitude=${station.lon}&current=temperature_2m,precipitation`)
+        .then(res => {
+          if (!res.ok) throw new Error("API returned " + res.status);
+          return res.json();
+        })
+        .then(data => {
+          const current = data.current;
+          return {
+            ...station,
+            temp: current ? Math.round(current.temperature_2m) : 28,
+            rain: current ? current.precipitation : 0
+          };
+        })
+    );
+
+    Promise.all(fetchPromises)
+      .then(apiStations => {
+        renderWeatherMarkers(apiStations, 'api');
+      })
+      .catch(err => {
+        console.warn("Weather API failed, falling back to simulated data:", err);
+        // Fallback mock data if API is down
+        const mockStations = weatherStations.map((station, i) => ({
+          ...station,
+          temp: [18, 34, 31, 27, 33, 29, 36, 22][i] || 30,
+          rain: [1, 0, 0, 5, 0, 0, 0, 2][i] || 0
+        }));
+        renderWeatherMarkers(mockStations, 'mock');
+      });
 
     mapInstanceRef.current = map;
 
