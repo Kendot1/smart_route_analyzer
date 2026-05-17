@@ -37,6 +37,7 @@ interface SidebarProps {
   onPinModeChange: (mode: 'origin' | 'dest' | null) => void;
   onPinPlaced: (type: 'origin' | 'dest', coords: { lat: number; lon: number }, address: string) => void;
   onRegisterPinCallback: (cb: (type: 'origin' | 'dest', coords: { lat: number; lon: number }, address: string) => void) => void;
+  destSearchOverride?: string | null;
 }
 
 export default function Sidebar({
@@ -52,6 +53,7 @@ export default function Sidebar({
   onPinModeChange,
   onPinPlaced,
   onRegisterPinCallback,
+  destSearchOverride,
 }: SidebarProps) {
   const [originSearch, setOriginSearch] = useState('');
   const [destSearch, setDestSearch] = useState('');
@@ -59,6 +61,13 @@ export default function Sidebar({
   const [destResults, setDestResults] = useState<SearchResult[]>([]);
   const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
   const [isSearchingDest, setIsSearchingDest] = useState(false);
+
+  // Handle external destination text override (hiking auto-snap)
+  useEffect(() => {
+    if (destSearchOverride) {
+      setDestSearch(destSearchOverride);
+    }
+  }, [destSearchOverride]);
   const [showOriginResults, setShowOriginResults] = useState(false);
   const [showDestResults, setShowDestResults] = useState(false);
   const [originCoords, setOriginCoords] = useState<{ lat: number; lon: number } | null>(null);
@@ -125,6 +134,7 @@ export default function Sidebar({
       setOriginSearch(result.display_name);
       setShowOriginResults(false);
       setOriginCoords({ lat, lon });
+      onPinPlaced('origin', { lat, lon }, result.display_name);
 
       if (destCoords) {
         onRouteRequest({ lat, lon }, destCoords);
@@ -133,6 +143,7 @@ export default function Sidebar({
       setDestSearch(result.display_name);
       setShowDestResults(false);
       setDestCoords({ lat, lon });
+      onPinPlaced('dest', { lat, lon }, result.display_name);
 
       if (originCoords) {
         onRouteRequest(originCoords, { lat, lon });
@@ -154,6 +165,7 @@ export default function Sidebar({
         const { latitude: lat, longitude: lng } = position.coords;
         setOriginSearch(`Current Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
         setOriginCoords({ lat, lon: lng });
+        onPinPlaced('origin', { lat, lon: lng }, `Current Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
 
         if (destCoords) {
           onRouteRequest({ lat, lon: lng }, destCoords);

@@ -12,6 +12,7 @@ interface SimpleMapProps {
   result: AnalysisResult | null;
   originCoords?: { lat: number; lon: number } | null;
   destCoords?: { lat: number; lon: number } | null;
+  hikingTrailhead?: { lat: number; lon: number; name: string } | null;
   pinMode?: 'origin' | 'dest' | null;
   mode?: TravelMode;
   onPinPlaced?: (type: 'origin' | 'dest', coords: { lat: number; lon: number }, address: string) => void;
@@ -90,12 +91,13 @@ async function fetchRouteWeatherPoints(
   }
 }
 
-export default function SimpleMap({ result, originCoords, destCoords, pinMode, mode, onPinPlaced }: SimpleMapProps) {
+export default function SimpleMap({ result, originCoords, destCoords, hikingTrailhead, pinMode, mode, onPinPlaced }: SimpleMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const [originMarker, setOriginMarker] = useState<L.Marker | null>(null);
   const [destMarker, setDestMarker] = useState<L.Marker | null>(null);
   const [routeLayer, setRouteLayer] = useState<L.Polyline | null>(null);
+  const trailheadMarkerRef = useRef<L.Marker | null>(null);
   const weatherLayersRef = useRef<L.LayerGroup | null>(null);
   const mountainLayersRef = useRef<L.LayerGroup | null>(null);
   const pinModeRef = useRef<'origin' | 'dest' | null>(null);
@@ -295,31 +297,38 @@ export default function SimpleMap({ result, originCoords, destCoords, pinMode, m
 
     if (!originCoords) return;
 
-    // Create green origin marker
+    // Create distinctive origin pin icon
     const greenIcon = L.divIcon({
       className: 'custom-div-icon',
       html: `
-        <div style="position: relative; width: 32px; height: 32px;">
-          <div style="position: absolute; top: 0; left: 0; width: 32px; height: 32px; background: #10b981; border-radius: 50%; border: 4px solid white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4), 0 0 0 8px rgba(16, 185, 129, 0.1); animation: pulse-ring 2s infinite;"></div>
-          <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; background: white; border-radius: 50%;"></div>
+        <div style="position: relative; width: 36px; height: 48px;">
+          <div style="position: absolute; top: 0; left: 0; width: 36px; height: 36px; background: linear-gradient(135deg, #10b981, #059669); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.5);"></div>
+          <div style="position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="5"/>
+              <path d="M20 21a8 8 0 0 0-16 0"/>
+            </svg>
+          </div>
+          <div style="position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 800; color: #059669; background: white; padding: 1px 5px; border-radius: 4px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,0.2); font-family: system-ui;">START</div>
         </div>
       `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
+      iconSize: [36, 48],
+      iconAnchor: [18, 44],
+      popupAnchor: [0, -44],
     });
 
-    const marker = L.marker([originCoords.lat, originCoords.lon], { icon: greenIcon, draggable: true }).addTo(map);
-    marker.bindPopup(
-      '<div style="font-weight: 600; color: #059669; font-size: 14px;">Start Point</div>',
+    const m = L.marker([originCoords.lat, originCoords.lon], { icon: greenIcon, draggable: true }).addTo(map);
+    m.bindPopup(
+      '<div style="font-weight: 600; color: #059669; font-size: 14px;">📍 Start Point</div>',
       { className: 'custom-popup' }
     );
-    marker.on('dragend', async () => {
-      const { lat, lng } = marker.getLatLng();
+    m.on('dragend', async () => {
+      const { lat, lng } = m.getLatLng();
       const address = await reverseGeocode(lat, lng);
       onPinPlacedRef.current?.('origin', { lat, lon: lng }, address);
     });
 
-    setOriginMarker(marker);
+    setOriginMarker(m);
     map.setView([originCoords.lat, originCoords.lon], 13);
   }, [originCoords]);
 
@@ -336,32 +345,75 @@ export default function SimpleMap({ result, originCoords, destCoords, pinMode, m
 
     if (!destCoords) return;
 
-    // Create red destination marker
+    // Create distinctive destination pin icon
     const redIcon = L.divIcon({
       className: 'custom-div-icon',
       html: `
-        <div style="position: relative; width: 32px; height: 32px;">
-          <div style="position: absolute; top: 0; left: 0; width: 32px; height: 32px; background: #ef4444; border-radius: 50%; border: 4px solid white; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4), 0 0 0 8px rgba(239, 68, 68, 0.1); animation: pulse-ring 2s infinite;"></div>
-          <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; background: white; border-radius: 50%;"></div>
+        <div style="position: relative; width: 36px; height: 48px;">
+          <div style="position: absolute; top: 0; left: 0; width: 36px; height: 36px; background: linear-gradient(135deg, #ef4444, #dc2626); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.5);"></div>
+          <div style="position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+              <line x1="4" x2="4" y1="22" y2="15"/>
+            </svg>
+          </div>
+          <div style="position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 800; color: #dc2626; background: white; padding: 1px 5px; border-radius: 4px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,0.2); font-family: system-ui;">END</div>
         </div>
       `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
+      iconSize: [36, 48],
+      iconAnchor: [18, 44],
+      popupAnchor: [0, -44],
     });
 
-    const marker = L.marker([destCoords.lat, destCoords.lon], { icon: redIcon, draggable: true }).addTo(map);
-    marker.bindPopup(
-      '<div style="font-weight: 600; color: #dc2626; font-size: 14px;">Destination</div>',
+    const dm = L.marker([destCoords.lat, destCoords.lon], { icon: redIcon, draggable: true }).addTo(map);
+    dm.bindPopup(
+      '<div style="font-weight: 600; color: #dc2626; font-size: 14px;">🏁 Destination</div>',
       { className: 'custom-popup' }
     );
-    marker.on('dragend', async () => {
-      const { lat, lng } = marker.getLatLng();
+    dm.on('dragend', async () => {
+      const { lat, lng } = dm.getLatLng();
       const address = await reverseGeocode(lat, lng);
       onPinPlacedRef.current?.('dest', { lat, lon: lng }, address);
     });
 
-    setDestMarker(marker);
+    setDestMarker(dm);
   }, [destCoords]);
+
+  // Hiking trailhead marker — shows where driving stops and hiking begins
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Remove old trailhead marker
+    if (trailheadMarkerRef.current) {
+      map.removeLayer(trailheadMarkerRef.current);
+      trailheadMarkerRef.current = null;
+    }
+
+    if (!hikingTrailhead) return;
+
+    const trailheadIcon = L.divIcon({
+      className: 'custom-div-icon',
+      html: `
+        <div style="position: relative; width: 40px; height: 48px;">
+          <div style="position: absolute; top: 0; left: 2px; width: 36px; height: 36px; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.5);"></div>
+          <div style="position: absolute; top: 6px; left: 9px; font-size: 18px; line-height: 1;">🥾</div>
+          <div style="position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%); font-size: 8px; font-weight: 800; color: #d97706; background: white; padding: 1px 4px; border-radius: 4px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,0.2); font-family: system-ui;">TRAILHEAD</div>
+        </div>
+      `,
+      iconSize: [40, 48],
+      iconAnchor: [20, 44],
+      popupAnchor: [0, -44],
+    });
+
+    const marker = L.marker([hikingTrailhead.lat, hikingTrailhead.lon], { icon: trailheadIcon }).addTo(map);
+    marker.bindPopup(
+      `<div style="font-weight: 600; color: #d97706; font-size: 13px;">🥾 ${hikingTrailhead.name}</div>
+       <div style="font-size: 11px; color: #666; margin-top: 2px;">🚗 Stop driving here → Start hiking</div>`,
+      { className: 'custom-popup' }
+    );
+    trailheadMarkerRef.current = marker;
+  }, [hikingTrailhead]);
 
   // Draw route + weather overlays when result changes
   useEffect(() => {

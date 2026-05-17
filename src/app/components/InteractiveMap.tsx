@@ -304,6 +304,50 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
       maxZoom: 19,
     }).addTo(map);
 
+    // Add Regional Weather Stations to give visual context of what places are hot/raining
+    const weatherStations = [
+      { name: 'Baguio', lat: 16.4023, lon: 120.5960, temp: 18, condition: 'rain' },
+      { name: 'Metro Manila', lat: 14.5995, lon: 120.9842, temp: 34, condition: 'hot' },
+      { name: 'Cebu City', lat: 10.3157, lon: 123.8854, temp: 31, condition: 'clear' },
+      { name: 'Davao City', lat: 7.1907, lon: 125.4553, temp: 27, condition: 'rain' },
+      { name: 'Legazpi', lat: 13.1391, lon: 123.7438, temp: 33, condition: 'hot' },
+      { name: 'Puerto Princesa', lat: 9.7392, lon: 118.7353, temp: 29, condition: 'clear' },
+      { name: 'Tuguegarao', lat: 17.6185, lon: 121.7280, temp: 36, condition: 'hot' },
+      { name: 'Batanes', lat: 20.4500, lon: 121.9667, temp: 22, condition: 'rain' }
+    ];
+
+    weatherStations.forEach(station => {
+      const iconHtml = station.condition === 'rain'
+        ? `<div style="background-color: #3b82f6; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>
+           </div>`
+        : station.condition === 'hot'
+        ? `<div style="background-color: #ef4444; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>
+           </div>`
+        : `<div style="background-color: #f59e0b; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(245, 158, 11, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+           </div>`;
+
+      const wIcon = L.divIcon({
+        className: 'regional-weather',
+        html: iconHtml,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+
+      L.marker([station.lat, station.lon], { icon: wIcon, zIndexOffset: 500 })
+        .bindPopup(
+          `<div style="font-weight: 600; color: #1f2937; font-size: 14px; margin-bottom: 4px;">${station.name}</div>
+           <div style="font-size: 12px; color: #4b5563;">
+             <span style="display:inline-block; width: 60px;">Temp:</span> <b>${station.temp}°C</b><br/>
+             <span style="display:inline-block; width: 60px;">Status:</span> <b>${station.condition.toUpperCase()}</b>
+           </div>`,
+          { className: 'custom-popup' }
+        )
+        .addTo(map);
+    });
+
     mapInstanceRef.current = map;
 
     // Cleanup

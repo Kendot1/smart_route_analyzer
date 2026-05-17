@@ -12,6 +12,8 @@ import {
   Zap,
   Navigation,
   Mountain,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import LandingPage from "./components/LandingPage";
 import AboutPage from "./components/AboutPage";
@@ -33,6 +35,9 @@ import {
   fetchOSRMRouteData,
   calculateHaversineDistance,
   generateRealisticCurvedRoute,
+  generateTrailPath,
+  fetchOSMTrailPath,
+  fetchNearestTrail,
 } from "./lib/routeUtils";
 import { findNearestMountain, isNearTrailhead } from "./lib/mountains";
 import type { AnalysisResult } from "./lib/types";
@@ -59,16 +64,25 @@ export default function App() {
     destination: { lat: number; lon: number };
   } | null>(null);
 
+  // Separate pin states — updated immediately when pins are placed
+  const [pinOrigin, setPinOrigin] = useState<{ lat: number; lon: number } | null>(null);
+  const [pinDest, setPinDest] = useState<{ lat: number; lon: number } | null>(null);
+
+  // External override for sidebar destination text (used by hiking auto-snap)
+  const [destSearchOverride, setDestSearchOverride] = useState<string | null>(null);
+  // Trailhead marker — shown on map where driving stops and hiking starts
+  const [hikingTrailhead, setHikingTrailhead] = useState<{ lat: number; lon: number; name: string } | null>(null);
+
   // Pin mode for plan map — Sidebar registers its handler here so SimpleMap can call it
   const [pinMode, setPinMode] = useState<
     "origin" | "dest" | null
   >(null);
   const pinPlacedCallbackRef = useRef<
     | ((
-        type: "origin" | "dest",
-        coords: { lat: number; lon: number },
-        address: string,
-      ) => void)
+      type: "origin" | "dest",
+      coords: { lat: number; lon: number },
+      address: string,
+    ) => void)
     | null
   >(null);
 
@@ -85,6 +99,10 @@ export default function App() {
 
   // Success celebration state
   const [showCelebration, setShowCelebration] = useState(false);
+  
+  // Post activity analysis state
+  const [postAnalysis, setPostAnalysis] = useState<string | null>(null);
+  const [isPostAnalysisLoading, setIsPostAnalysisLoading] = useState(false);
 
   // Check if first visit for onboarding
   useEffect(() => {
@@ -112,6 +130,30 @@ export default function App() {
     setOnboardingStep(0);
   };
 
+  // Generate LLM analysis when activity completes
+  useEffect(() => {
+    if (activityData) {
+      setIsPostAnalysisLoading(true);
+      setPostAnalysis(null);
+      import("./lib/groqAI").then((module) => {
+        module.generatePostActivityAnalysis({
+          mode: activityData.mode,
+          distanceKm: activityData.distance,
+          durationMin: activityData.duration,
+          velocityKmh: activityData.velocity,
+          calories: activityData.calories || 0,
+          weather: result?.weather,
+        }).then((analysis) => {
+          setPostAnalysis(analysis);
+          setIsPostAnalysisLoading(false);
+        }).catch(() => {
+          setPostAnalysis("Activity tracked successfully!");
+          setIsPostAnalysisLoading(false);
+        });
+      });
+    }
+  }, [activityData, result]);
+
   // Recalculate route when mode changes (if route coordinates exist)
   useEffect(() => {
     if (routeCoords && viewMode === "plan") {
@@ -131,6 +173,7 @@ export default function App() {
   ) => {
     setLoading(true);
     setError(null);
+    setHikingTrailhead(null); // Clear trailhead on new route/mode change
 
     // Store coordinates for mode change recalculation
     setRouteCoords({
@@ -143,142 +186,390 @@ export default function App() {
       console.log("  From:", originCoords);
       console.log("  To:", destCoords);
 
-      // Try OSRM for real road routing
       let routeData;
       let weatherData;
       let useDemo = false;
 
-      const osrmResult = await fetchOSRMRouteData(
-        originCoords.lat,
-        originCoords.lon,
-        destCoords.lat,
-        destCoords.lon,
-        mode,
-      );
+      // ─── HIKING MODE: Two-segment routing ─────────────────────
+      // For hiking, we build a combined route:
+      //   Segment 1: Car route (origin → mountain trailhead) via OSRM car profile
+      //   Segment 2: Trail path (trailhead → peak) via curved approximation
+      // This avoids OSRM foot profile cutting off in remote mountain areas.
 
-      if (osrmResult) {
-        // OSRM SUCCESS - Use real road routing
-        console.log(
-          "OSRM SUCCESS - Using real OpenStreetMap road routing",
-        );
-        routeData = {
-          routes: [
-            {
-              distance: osrmResult.distance,
-              duration: osrmResult.duration,
-              geometry: { coordinates: osrmResult.coordinates },
-            },
-          ],
-        };
-      } else {
-        // All routing APIs unavailable - Use curved approximation
-        console.log(
-          "⚠️ All routing APIs blocked in preview environment",
-        );
-        console.log(
-          "📝 Tried: OSRM, Valhalla, OpenRouteService - all failed",
-        );
-        console.log(
-          "🔧 Using curved approximation as fallback",
-        );
-        useDemo = true;
+      let hikingRouteData: AnalysisResult['hikingRoute'] | undefined;
 
-        // Generate realistic curved route with waypoints
-        const coords = generateRealisticCurvedRoute(
-          originCoords.lat,
-          originCoords.lon,
-          destCoords.lat,
-          destCoords.lon,
-        );
+      if (mode === 'hiking') {
+        // Validate: DESTINATION must be near a mountain peak for hiking mode
+        // Search within 2km radius — user must click near a mountain marker
+        const mountain = findNearestMountain(destCoords.lat, destCoords.lon, 2);
 
-        // Calculate actual path distance
-        let totalDistance = 0;
-        for (let i = 1; i < coords.length; i++) {
-          const [lng1, lat1] = coords[i - 1];
-          const [lng2, lat2] = coords[i];
-          totalDistance += calculateHaversineDistance(
-            lat1,
-            lng1,
-            lat2,
-            lng2,
-          );
+        if (!mountain) {
+          const originMountain = findNearestMountain(originCoords.lat, originCoords.lon, 2);
+          if (originMountain) {
+            setError(
+              `🏔️ Your starting point is near ${originMountain.name}, but hiking mode requires ` +
+              "the DESTINATION (end pin) to be the mountain. " +
+              "Try swapping your origin and destination pins."
+            );
+          } else {
+            setError(
+              "🏔️ Hiking mode requires selecting a mountain as your destination. " +
+              "Please click on a mountain marker (🏔️) on the map to set it as your destination, " +
+              "or search for a mountain name (e.g. Mt. Pulag, Mt. Batulao, Mt. Ayaas)."
+            );
+          }
+          setLoading(false);
+          return;
         }
 
-        const distanceKm = totalDistance / 1000;
+        // AUTO-SNAP: Move destination to exact mountain peak coordinates
+        const originalDest = { ...destCoords };
+        destCoords = { lat: mountain.peak.lat, lon: mountain.peak.lng };
+        console.log(`📌 Auto-snapped destination to ${mountain.name} peak: ${destCoords.lat}, ${destCoords.lon}`);
 
-        const speedMap: Record<string, number> = {
-          walking: 4.8,
-          hiking: 3.5,
-          jogging: 9.0,
-          biking: 18.0,
-          car: 35.0,
-        };
-        const duration = (distanceKm / speedMap[mode]) * 60; // minutes
+        // Update pin on map and sidebar text
+        setPinDest(destCoords);
+        setRouteCoords({ origin: originCoords, destination: destCoords });
+        setDestSearchOverride(`${mountain.name}, ${mountain.province}, Philippines`);
 
-        routeData = {
-          routes: [
-            {
-              distance: totalDistance, // meters
-              duration: duration * 60, // seconds
-              geometry: { coordinates: coords },
-            },
-          ],
-        };
-
-        setError(
-          "⚠️ Real road routing APIs (OSRM/Valhalla/OpenRouteService) unavailable in preview. Using curved approximation. Deploy to production with proper CORS for accurate street-level routing.",
+        // Notify user about the reroute
+        const snapDist = calculateHaversineDistance(
+          originalDest.lat, originalDest.lon,
+          destCoords.lat, destCoords.lon
         );
+
+        if (snapDist > 100) {
+          showToast(
+            `📌 Destination rerouted to ${mountain.name} peak (${(snapDist / 1000).toFixed(1)}km from your pin)`,
+            'info'
+          );
+        } else {
+          showToast(`🏔️ Routing to ${mountain.name} peak`, 'info');
+        }
+
+        console.log(`🏔️ Mountain detected: ${mountain.name} (${mountain.province})`);
+
+        // We will overwrite hikingRouteData below with DYNAMIC calculations
+        // based on where the car route actually stops.
+        hikingRouteData = {
+          mountainName: mountain.name,
+          mountainProvince: mountain.province,
+          elevationMeters: mountain.elevationMeters,
+          difficulty: mountain.difficulty,
+          description: mountain.description,
+          carSegment: { distanceKm: 0, durationMinutes: 0, fuelCost: 0 },
+          hikingSegment: { distanceKm: 0, durationMinutes: 0, calories: 0, elevationGain: mountain.elevationMeters },
+        };
       }
 
-      // Try to fetch weather data for the route location
+      // ─── ROUTING ───
+      if (mode === 'hiking' && hikingRouteData) {
+        const mountain = findNearestMountain(destCoords.lat, destCoords.lon, 2)!;
+
+        let combinedCoords: [number, number][] = [];
+        let totalDistance = 0;
+        let totalDuration = 0;
+
+        // ══════════════════════════════════════════════════════════════
+        // HIKING ROUTING: 3-tier approach
+        //   1. Route car to peak → trace backwards to find trailhead
+        //   2. Use OSRM foot routing from trailhead → peak (follows brown trails!)
+        //   3. Fallback: Overpass trail extraction or procedural path
+        // ══════════════════════════════════════════════════════════════
+
+        // Step 1: Drive toward the mountain to find the road network near it
+        console.log(`🚗 Step 1: Driving toward ${mountain.name}...`);
+        const carSegment = await fetchOSRMRouteData(
+          originCoords.lat, originCoords.lon,
+          destCoords.lat, destCoords.lon,
+          'car',
+        );
+
+        let trailStart: [number, number] = [originCoords.lon, originCoords.lat];
+        let truncatedCarCoords: [number, number][] = [];
+        let remainingCarCoords: [number, number][] = [];
+
+        if (carSegment && carSegment.coordinates.length > 0) {
+          // Trace backwards along the car route to find a realistic trailhead
+          const elev = mountain.elevationMeters;
+          let targetHikeKm = 2;
+          if (elev > 400) targetHikeKm = 3;
+          if (elev > 800) targetHikeKm = 5;
+          if (elev > 1500) targetHikeKm = 8;
+          if (elev > 2000) targetHikeKm = 12;
+
+          let accumulatedBackwardsDist = 0;
+          let splitIndex = carSegment.coordinates.length - 1;
+
+          for (let i = carSegment.coordinates.length - 1; i > 0; i--) {
+            const p1 = carSegment.coordinates[i];
+            const p2 = carSegment.coordinates[i - 1];
+            const segDist = calculateHaversineDistance(p1[1], p1[0], p2[1], p2[0]) / 1000;
+            accumulatedBackwardsDist += segDist;
+            const distToPeak = calculateHaversineDistance(p2[1], p2[0], destCoords.lat, destCoords.lon) / 1000;
+            if (distToPeak >= targetHikeKm || accumulatedBackwardsDist >= targetHikeKm) {
+              splitIndex = i - 1;
+              break;
+            }
+          }
+
+          truncatedCarCoords = carSegment.coordinates.slice(0, splitIndex + 1);
+          combinedCoords.push(...truncatedCarCoords);
+          const lengthRatio = truncatedCarCoords.length / carSegment.coordinates.length;
+          totalDistance += carSegment.distance * lengthRatio;
+          totalDuration += carSegment.duration * lengthRatio;
+          trailStart = truncatedCarCoords[truncatedCarCoords.length - 1];
+
+          // Save the remaining car route (split→peak) to use as a bridge segment.
+          // This portion includes proper bridge crossings over rivers!
+          remainingCarCoords = carSegment.coordinates.slice(splitIndex);
+        }
+
+        // Set trailhead marker
+        setHikingTrailhead({
+          lat: trailStart[1],
+          lon: trailStart[0],
+          name: `${mountain.name} Trailhead`,
+        });
+
+        // Step 2: Try hiking-specific routing from trailhead → peak
+        // ORS foot-hiking profile includes tracks (red dashed lines), paths, and bridges
+        console.log(`🥾 Step 2: Trying hiking route (ORS/Valhalla/OSRM)...`);
+        const footRoute = await fetchOSRMRouteData(
+          trailStart[1], trailStart[0],
+          destCoords.lat, destCoords.lon,
+          'hiking',
+        );
+
+        let hikeDistKm: number;
+        let hikeHours: number;
+
+        if (footRoute && footRoute.coordinates.length > 3) {
+          // SUCCESS: OSRM foot routing found a path along actual trails
+          console.log(`✅ OSRM foot route: ${(footRoute.distance / 1000).toFixed(1)}km, ${footRoute.coordinates.length} points`);
+
+          // Bridge gap using remaining car route (includes bridge crossings!)
+          if (combinedCoords.length > 0 && remainingCarCoords.length > 1) {
+            const lastPt = combinedCoords[combinedCoords.length - 1];
+            const firstFootPt = footRoute.coordinates[0];
+            const gap = calculateHaversineDistance(lastPt[1], lastPt[0], firstFootPt[1], firstFootPt[0]);
+            if (gap > 100) {
+              // Use remaining car route to bridge (it includes proper bridge crossings)
+              // Find the point in remainingCarCoords closest to the foot route start
+              let bestIdx = 0;
+              let bestDist = Infinity;
+              for (let i = 0; i < remainingCarCoords.length; i++) {
+                const d = calculateHaversineDistance(
+                  remainingCarCoords[i][1], remainingCarCoords[i][0],
+                  firstFootPt[1], firstFootPt[0]
+                );
+                if (d < bestDist) { bestDist = d; bestIdx = i; }
+              }
+              // Insert car route from trailhead up to the closest point to foot start
+              if (bestIdx > 0) {
+                combinedCoords.push(...remainingCarCoords.slice(1, bestIdx + 1));
+              }
+            } else if (gap > 20) {
+              combinedCoords.push(firstFootPt);
+            }
+          }
+
+          combinedCoords.push(...footRoute.coordinates);
+          hikeDistKm = footRoute.distance / 1000;
+
+          // Use Naismith's rule for hiking time
+          const flatTime = hikeDistKm / 3.5;
+          const ascentTime = mountain.elevationMeters / 600;
+          hikeHours = Math.max(0.5, Math.round((flatTime + ascentTime * 0.4) * 10) / 10);
+
+        } else {
+          // FALLBACK: Try Overpass trail extraction
+          console.log(`⚠️ OSRM foot failed. Trying Overpass trail extraction...`);
+          const realTrail = await fetchNearestTrail(destCoords.lat, destCoords.lon);
+
+          if (realTrail && realTrail.trailCoords.length > 3) {
+            console.log(`✅ Overpass trail found: ${realTrail.trailDistanceKm.toFixed(1)}km`);
+
+            // Bridge gap
+            if (combinedCoords.length > 0 && realTrail.trailCoords.length > 0) {
+              const lastPt = combinedCoords[combinedCoords.length - 1];
+              const firstTrailPt = realTrail.trailCoords[0];
+              const gap = calculateHaversineDistance(lastPt[1], lastPt[0], firstTrailPt[1], firstTrailPt[0]);
+              if (gap > 20) combinedCoords.push(firstTrailPt);
+            }
+
+            combinedCoords.push(...realTrail.trailCoords);
+            hikeDistKm = realTrail.trailDistanceKm;
+          } else {
+            // LAST RESORT: Procedural path
+            console.log(`⚠️ Overpass also failed. Using procedural trail.`);
+            const trailCoords = generateTrailPath(trailStart[1], trailStart[0], destCoords.lat, destCoords.lon);
+            combinedCoords.push(...trailCoords.slice(1));
+
+            const straightDist = calculateHaversineDistance(trailStart[1], trailStart[0], destCoords.lat, destCoords.lon) / 1000;
+            let multiplier = 1.5;
+            if (mountain.elevationMeters >= 2000) multiplier = 2.1;
+            else if (mountain.elevationMeters >= 1500) multiplier = 1.9;
+            else if (mountain.elevationMeters >= 1000) multiplier = 1.7;
+            else if (mountain.elevationMeters >= 500) multiplier = 1.5;
+            else multiplier = 1.3;
+            hikeDistKm = Math.max(0.5, Math.round(straightDist * multiplier * 10) / 10);
+          }
+
+          const flatTime = hikeDistKm / 3.5;
+          const ascentTime = mountain.elevationMeters / 600;
+          hikeHours = Math.max(0.5, Math.round((flatTime + ascentTime * 0.4) * 10) / 10);
+        }
+
+        // Connect to peak pin
+        const lastCoord = combinedCoords[combinedCoords.length - 1];
+        const peakPt: [number, number] = [destCoords.lon, destCoords.lat];
+        const distToPin = calculateHaversineDistance(lastCoord[1], lastCoord[0], destCoords.lat, destCoords.lon);
+        if (distToPin > 50) combinedCoords.push(peakPt);
+
+        // Calculate hiking metrics
+        const hikeCalories = calculateCalories('hiking', userWeight, hikeHours, hikeDistKm / hikeHours);
+        hikingRouteData.hikingSegment = {
+          distanceKm: Math.round(hikeDistKm * 10) / 10,
+          durationMinutes: Math.round(hikeHours * 60),
+          calories: Math.round(hikeCalories),
+          elevationGain: mountain.elevationMeters,
+        };
+
+        totalDistance += hikeDistKm * 1000;
+        totalDuration += hikingRouteData.hikingSegment.durationMinutes * 60;
+
+        // Car segment stats
+        const carDistKm = carSegment ? carSegment.distance / 1000 : 0;
+        const carDurMin = carSegment ? carSegment.duration / 60 : 0;
+        hikingRouteData.carSegment = {
+          distanceKm: Math.round(carDistKm * 10) / 10,
+          durationMinutes: Math.round(carDurMin),
+          fuelCost: Math.round(carDistKm * 7.5),
+        };
+
+        console.log(`🚗 Car: ${carDistKm.toFixed(1)}km, ${carDurMin.toFixed(0)}min`);
+        console.log(`🥾 Hike: ${hikeDistKm.toFixed(1)}km, ${hikeHours.toFixed(1)}hr`);
+
+        // Ensure route connects to origin pin
+        const originPoint: [number, number] = [originCoords.lon, originCoords.lat];
+        if (combinedCoords.length > 0) {
+          const startGap = calculateHaversineDistance(
+            originCoords.lat, originCoords.lon,
+            combinedCoords[0][1], combinedCoords[0][0]
+          );
+          if (startGap > 50) combinedCoords.unshift(originPoint);
+        }
+
+        routeData = {
+          routes: [{
+            distance: totalDistance,
+            duration: totalDuration,
+            geometry: { coordinates: combinedCoords },
+          }],
+        };
+      } else {
+        // Non-hiking modes: single-segment routing
+        const osrmResult = await fetchOSRMRouteData(
+          originCoords.lat, originCoords.lon,
+          destCoords.lat, destCoords.lon,
+          mode,
+        );
+
+        if (osrmResult) {
+          console.log(`✅ OSRM SUCCESS (${mode}): ${(osrmResult.distance / 1000).toFixed(1)}km`);
+
+          const coords = osrmResult.coordinates;
+          const originPoint: [number, number] = [originCoords.lon, originCoords.lat];
+          const destPoint: [number, number] = [destCoords.lon, destCoords.lat];
+
+          const routeStart = coords[0];
+          const startGap = calculateHaversineDistance(
+            originCoords.lat, originCoords.lon, routeStart[1], routeStart[0]
+          );
+          if (startGap > 50) coords.unshift(originPoint);
+
+          const routeEnd = coords[coords.length - 1];
+          const endGap = calculateHaversineDistance(
+            destCoords.lat, destCoords.lon, routeEnd[1], routeEnd[0]
+          );
+          if (endGap > 50) coords.push(destPoint);
+
+          routeData = {
+            routes: [{
+              distance: osrmResult.distance,
+              duration: osrmResult.duration,
+              geometry: { coordinates: coords },
+            }],
+          };
+        } else {
+          console.log("⚠️ All routing APIs unavailable, using curved approximation");
+          useDemo = true;
+
+          const coords = generateRealisticCurvedRoute(
+            originCoords.lat, originCoords.lon,
+            destCoords.lat, destCoords.lon,
+          );
+
+          let totalDistance = 0;
+          for (let i = 1; i < coords.length; i++) {
+            const [lng1, lat1] = coords[i - 1];
+            const [lng2, lat2] = coords[i];
+            totalDistance += calculateHaversineDistance(lat1, lng1, lat2, lng2);
+          }
+
+          const distanceKm = totalDistance / 1000;
+          const speedMap: Record<string, number> = {
+            walking: 4.8, hiking: 3.5, jogging: 9.0, biking: 18.0, car: 35.0,
+          };
+          const dur = (distanceKm / (speedMap[mode] || 4.8)) * 60;
+
+          routeData = {
+            routes: [{
+              distance: totalDistance,
+              duration: dur * 60,
+              geometry: { coordinates: coords },
+            }],
+          };
+
+          setError("⚠️ Real road routing APIs unavailable. Using curved approximation.");
+        }
+      }
+
+      // Fetch weather
       try {
         const midLat = (originCoords.lat + destCoords.lat) / 2;
         const midLon = (originCoords.lon + destCoords.lon) / 2;
-
-        // Fetch temperature, precipitation, wind, humidity, and weather code
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&current=temperature_2m,precipitation,wind_speed_10m,relative_humidity_2m,weather_code&timezone=auto`;
-
-        const weatherRes = await fetch(weatherUrl, {
-          mode: "cors",
-        });
+        const weatherRes = await fetch(weatherUrl, { mode: "cors" });
         weatherData = await weatherRes.json();
-
-        if (!weatherData.current) {
-          throw new Error("Weather failed");
-        }
-      } catch (weatherError) {
-        console.log(
-          "⚠️ Weather API failed, using demo weather",
-        );
-        // Demo weather with realistic Philippine defaults
+        if (!weatherData.current) throw new Error("Weather failed");
+      } catch {
         weatherData = {
           current: {
-            temperature_2m: 30,
-            precipitation: 0,
-            wind_speed_10m: 12,
-            relative_humidity_2m: 72,
-            weather_code: 1,
+            temperature_2m: 30, precipitation: 0,
+            wind_speed_10m: 12, relative_humidity_2m: 72, weather_code: 1,
           },
         };
       }
 
       const route = routeData.routes[0];
-      const distanceKm = route.distance / 1000;
+      const osrmDistanceKm = route.distance / 1000;
 
-      // Calculate duration using our research-backed base speeds per mode.
-      // We DON'T rely on OSRM's duration because:
-      //   1. OSRM's foot/bike profiles give inconsistent speeds
-      //   2. OSRM often returns car-like durations for all profiles
-      //   3. Our base speeds are calibrated for Philippine conditions
+      // Calculate duration using research-backed base speeds
       const BASE_SPEEDS: Record<string, number> = {
-        walking: 4.8,   // moderate pace, flat terrain
-        hiking: 3.5,    // moderate trail with elevation
-        jogging: 9.0,   // recreational jogger
-        biking: 18.0,   // casual cyclist on road
-        car: 35.0,      // urban Manila average (traffic)
+        walking: 4.8, hiking: 3.5, jogging: 9.0, biking: 18.0, car: 35.0,
       };
+
+      // For hiking: use trail distance (not road distance) for metrics
+      // The map shows the road route, but metrics show hiking trail data
+      const distanceKm = hikingRouteData
+        ? hikingRouteData.hikingSegment.distanceKm
+        : osrmDistanceKm;
       const baseSpeedKmh = BASE_SPEEDS[mode] || 4.8;
-      let duration = (distanceKm / baseSpeedKmh) * 60; // minutes
+      const duration = hikingRouteData
+        ? hikingRouteData.hikingSegment.durationMinutes
+        : (distanceKm / baseSpeedKmh) * 60;
 
       const routeInfo = {
         distance: distanceKm,
@@ -296,30 +587,15 @@ export default function App() {
         },
       };
 
-      // Debug logging
-      console.log(`📊 ${mode} mode: ${distanceKm.toFixed(2)} km, base speed ${baseSpeedKmh} km/h → ${duration.toFixed(1)} min`);
+      console.log(`📊 ${mode} mode: ${routeInfo.distance.toFixed(2)} km → ${duration.toFixed(1)} min`);
 
       const weatherCodeDescriptions: Record<number, string> = {
-        0: "clear sky",
-        1: "mainly clear",
-        2: "partly cloudy",
-        3: "overcast",
-        45: "foggy",
-        48: "foggy",
-        51: "light drizzle",
-        53: "moderate drizzle",
-        55: "dense drizzle",
-        61: "light rain",
-        63: "moderate rain",
-        65: "heavy rain",
-        71: "light snow",
-        73: "moderate snow",
-        75: "heavy snow",
-        80: "light rain showers",
-        81: "moderate rain showers",
-        82: "heavy rain showers",
-        95: "thunderstorm",
-        96: "thunderstorm with hail",
+        0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast",
+        45: "foggy", 48: "foggy", 51: "light drizzle", 53: "moderate drizzle",
+        55: "dense drizzle", 61: "light rain", 63: "moderate rain", 65: "heavy rain",
+        71: "light snow", 73: "moderate snow", 75: "heavy snow",
+        80: "light rain showers", 81: "moderate rain showers", 82: "heavy rain showers",
+        95: "thunderstorm", 96: "thunderstorm with hail",
       };
 
       const weather = {
@@ -328,89 +604,9 @@ export default function App() {
         windSpeed: weatherData.current.wind_speed_10m,
         humidity: weatherData.current.relative_humidity_2m || 65,
         description:
-          weatherCodeDescriptions[
-            weatherData.current.weather_code
-          ] || "unknown",
+          weatherCodeDescriptions[weatherData.current.weather_code] || "unknown",
         icon: "01d",
       };
-
-      // ─── HIKING MODE: Multi-segment route detection ─────────────
-      let hikingRouteData: AnalysisResult['hikingRoute'] | undefined;
-
-      if (mode === 'hiking') {
-        // Check if destination is near a known mountain
-        const mountain = findNearestMountain(destCoords.lat, destCoords.lon);
-
-        if (!mountain) {
-          // No mountain found — show error with guidance
-          setError(
-            "🏔️ Hiking mode requires a mountain destination. " +
-            "Try searching for: Mt. Pulag, Mt. Pinatubo, Mt. Batulao, Mt. Maculot, " +
-            "Mt. Pico de Loro, Mt. Apo, or other Philippine mountains. " +
-            "Place your destination pin near a known mountain peak or trailhead."
-          );
-          setLoading(false);
-          return;
-        }
-
-        console.log(`🏔️ Mountain detected: ${mountain.name} (${mountain.province})`);
-        console.log(`   Peak: ${mountain.peak.lat}, ${mountain.peak.lng}`);
-        console.log(`   Trailhead: ${mountain.trailhead.lat}, ${mountain.trailhead.lng}`);
-
-        // Check if origin is already near the trailhead
-        const alreadyAtTrailhead = isNearTrailhead(originCoords.lat, originCoords.lon, mountain);
-
-        // Calculate Car segment: Origin → Trailhead
-        const carDistanceKm = alreadyAtTrailhead
-          ? 0
-          : calculateHaversineDistance(
-              originCoords.lat, originCoords.lon,
-              mountain.trailhead.lat, mountain.trailhead.lng
-            ) / 1000;
-        const carDurationMinutes = alreadyAtTrailhead ? 0 : (carDistanceKm / 35) * 60;
-        const carFuel = alreadyAtTrailhead ? 0 : calculateFuel(carDistanceKm, {
-          temperature: weather.temperature,
-          rain: weather.rain,
-          windSpeed: weather.windSpeed,
-          humidity: weather.humidity,
-        });
-
-        // Calculate Hiking segment: Trailhead → Peak (use mountain's known trail data)
-        const hikeDistanceKm = mountain.trailDistanceKm;
-        const hikeDurationMinutes = mountain.estimatedHikeHours * 60;
-        const hikeCalories = calculateCalories(
-          'hiking',
-          userWeight,
-          mountain.estimatedHikeHours,
-          hikeDistanceKm / mountain.estimatedHikeHours
-        );
-
-        hikingRouteData = {
-          mountainName: mountain.name,
-          mountainProvince: mountain.province,
-          elevationMeters: mountain.elevationMeters,
-          difficulty: mountain.difficulty,
-          description: mountain.description,
-          carSegment: {
-            distanceKm: Math.round(carDistanceKm * 10) / 10,
-            durationMinutes: Math.round(carDurationMinutes),
-            fuelCost: Math.round(calculateCost(carFuel) * 100) / 100,
-          },
-          hikingSegment: {
-            distanceKm: hikeDistanceKm,
-            durationMinutes: Math.round(hikeDurationMinutes),
-            calories: Math.round(hikeCalories),
-            elevationGain: mountain.elevationMeters,
-          },
-        };
-
-        // Override the route distance/duration to show total trip
-        routeInfo.distance = carDistanceKm + hikeDistanceKm;
-        routeInfo.duration = carDurationMinutes + hikeDurationMinutes;
-
-        console.log(`🚗 Car: ${carDistanceKm.toFixed(1)}km, ${carDurationMinutes.toFixed(0)}min`);
-        console.log(`🥾 Hike: ${hikeDistanceKm}km, ${hikeDurationMinutes.toFixed(0)}min, ${hikeCalories.toFixed(0)}kcal`);
-      }
 
       // Step 4: Calculate physics with full weather data (including humidity)
       const weatherInput = {
@@ -659,6 +855,7 @@ export default function App() {
           <LiveTracker
             mode={mode}
             userWeight={userWeight}
+            weatherInfo={result?.weather}
             onActivityComplete={(data) => {
               setActivityData(data);
               console.log("Activity completed:", data);
@@ -754,6 +951,23 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Smart Post-Activity Analysis */}
+                <div className="bg-brand-purple/5 border border-brand-purple/20 rounded-xl md:rounded-2xl p-4 md:p-5 mb-4 md:mb-6">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-4 h-4 text-brand-purple" />
+                    <span className="text-xs font-bold text-brand-purple uppercase tracking-widest">Smart Analysis</span>
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed font-medium">
+                    {isPostAnalysisLoading ? (
+                      <span className="flex items-center gap-2 text-gray-500 animate-pulse">
+                        <Loader2 className="w-4 h-4 animate-spin" /> Synthesizing activity data...
+                      </span>
+                    ) : (
+                      postAnalysis
+                    )}
+                  </p>
+                </div>
+
                 <div className="flex gap-3">
                   <button
                     onClick={() => setActivityData(null)}
@@ -793,27 +1007,54 @@ export default function App() {
         <div className="flex-1 relative">
           <SimpleMap
             result={result}
-            originCoords={routeCoords?.origin}
-            destCoords={routeCoords?.destination}
+            originCoords={pinOrigin ?? routeCoords?.origin}
+            destCoords={pinDest ?? routeCoords?.destination}
+            hikingTrailhead={hikingTrailhead}
             pinMode={pinMode}
             mode={mode}
             onPinPlaced={(type, coords, address) => {
+              // INSTANT HIKING SNAP: If placing dest pin in hiking mode,
+              // snap to nearest mountain peak immediately (before route request)
+              let finalCoords = coords;
+              let finalAddress = address;
+              if (type === 'dest' && mode === 'hiking') {
+                const nearMountain = findNearestMountain(coords.lat, coords.lon, 2);
+                if (nearMountain) {
+                  finalCoords = { lat: nearMountain.peak.lat, lon: nearMountain.peak.lng };
+                  finalAddress = `${nearMountain.name}, ${nearMountain.province}, Philippines`;
+                  setDestSearchOverride(finalAddress);
+                  showToast(`📌 Destination snapped to ${nearMountain.name} peak`, 'info');
+                }
+              }
+
+              // Update pin state IMMEDIATELY so marker appears right away
+              if (type === 'origin') setPinOrigin(finalCoords);
+              else setPinDest(finalCoords);
+
               pinPlacedCallbackRef.current?.(
                 type,
-                coords,
-                address,
+                finalCoords,
+                finalAddress,
               );
               setPinMode(null);
             }}
           />
 
-          {/* Error display on map */}
+          {/* Centered error overlay on map */}
           {error && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] max-w-md w-[90%]">
-              <div className="bg-blue-500/95 backdrop-blur-md rounded-xl px-4 py-3 border border-blue-300/50 shadow-lg">
-                <p className="text-sm text-white font-medium">
-                  {error}
+            <div className="absolute inset-0 z-[1000] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl px-6 py-5 border border-red-200 shadow-2xl max-w-md w-[90%] text-center">
+                <div className="text-4xl mb-3">🏔️</div>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">Hiking Mode Notice</h3>
+                <p className="text-sm text-gray-600 leading-relaxed mb-4">
+                  {error.replace(/🏔️\s*/g, '')}
                 </p>
+                <button
+                  onClick={() => setError(null)}
+                  className="px-6 py-2 bg-brand-coral text-white rounded-lg font-semibold hover:bg-red-500 transition-all shadow-md"
+                >
+                  Got it
+                </button>
               </div>
             </div>
           )}
@@ -833,13 +1074,21 @@ export default function App() {
               setResult(null);
               setError(null);
               setRouteCoords(null);
+              setPinOrigin(null);
+              setPinDest(null);
+              setDestSearchOverride(null);
+              setHikingTrailhead(null);
             }}
             pinMode={pinMode}
             onPinModeChange={setPinMode}
-            onPinPlaced={() => {}}
+            onPinPlaced={(type, coords) => {
+              if (type === 'origin') setPinOrigin(coords);
+              else setPinDest(coords);
+            }}
             onRegisterPinCallback={(cb) => {
               pinPlacedCallbackRef.current = cb;
             }}
+            destSearchOverride={destSearchOverride}
           />
         </div>
       </div>

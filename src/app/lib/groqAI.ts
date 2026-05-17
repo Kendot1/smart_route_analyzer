@@ -65,8 +65,8 @@ export async function generateAISummary(input: RouteSummaryInput): Promise<strin
             content: prompt,
           },
         ],
-        temperature: 0.5,
-        max_tokens: 200,
+        temperature: 0.4,
+        max_tokens: 250,
       }),
       signal: controller.signal,
     });
@@ -105,15 +105,18 @@ Context:
 - Difficulty: ${input.difficulty}
 ${input.isCarMode ? '' : `- They weigh enough to burn ${input.caloriesOrFuel.toFixed(0)} kcal — is this equivalent to any common food?`}
 
-Give 2-3 sentences of ACTIONABLE advice they can't figure out from the numbers alone. Examples of good insights:
+Give actionable advice they can't figure out from the numbers alone. Examples of good insights:
 - "Bring at least 500ml of water for every 30 min at this temperature and humidity"
 - "The heat index feels like 38°C — consider starting before 7 AM or after 4 PM"
-- "You'd save 15 minutes and burn 40% more calories by jogging instead"
 - "This rain level makes painted road markings dangerously slippery for bikes"
-- "At this pace, you'll need a rest stop around the halfway point"
-- "That's equivalent to burning off 2 cups of rice — great workout!"
 
-Be specific, practical, and Filipino-context-aware. No markdown.`;
+Provide your response in EXACTLY this format (do not use markdown formatting like asterisks or bolding):
+
+AI ANALYSIS
+(1-2 sentences of smart insights about the route, weather, or calories)
+
+RECOMMENDATION
+(1-2 sentences of actionable, context-aware advice based on the analysis)`;
 }
 
 /**
@@ -199,5 +202,89 @@ function generateLocalSummary(input: RouteSummaryInput): string {
     }
   }
 
-  return parts.join(' ').trim();
+  return `AI ANALYSIS
+${parts[1] || 'Good driving conditions. Keep steady throttle for best fuel efficiency.'}
+
+RECOMMENDATION
+${parts[0] || 'Enjoy your trip and stay safe on the road.'}`;
+}
+
+export interface PostActivityInput {
+  mode: string;
+  distanceKm: number;
+  durationMin: number;
+  velocityKmh: number;
+  calories: number;
+  weather?: {
+    temperature: number;
+    humidity: number;
+    rain: number;
+    windSpeed: number;
+    description: string;
+  };
+}
+
+export async function generatePostActivityAnalysis(input: PostActivityInput): Promise<string> {
+  const apiKey = GROQ_API_KEY;
+  
+  if (!apiKey) {
+    return generateLocalPostAnalysis(input);
+  }
+
+  const prompt = `You are FitRoute AI analyzing a COMPLETED ${input.mode} activity in the Philippines.
+The user just finished: distance ${input.distanceKm.toFixed(2)} km, duration ${input.durationMin.toFixed(0)} min, speed ${input.velocityKmh.toFixed(1)} km/h, calories ${input.calories.toFixed(0)} kcal.
+${input.weather ? `Weather during the activity was: ${input.weather.description}, ${input.weather.temperature}°C, rain ${input.weather.rain}mm/h.` : ''}
+
+Give a very brief, smart post-activity analysis (2 sentences max) praising their effort and giving a fun equivalence (like Filipino food burned off) or context about the weather they braved. Do not use any markdown formatting (no bolding, no asterisks).`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'mixtral-8x7b-32768',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.6,
+        max_tokens: 150,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return generateLocalPostAnalysis(input);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content?.trim() || generateLocalPostAnalysis(input);
+  } catch (error) {
+    return generateLocalPostAnalysis(input);
+  }
+}
+
+function generateLocalPostAnalysis(input: PostActivityInput): string {
+  const dist = input.distanceKm;
+  const cal = input.calories || 0;
+  const time = input.durationMin;
+  let analysis = "";
+  
+  if (input.mode === 'car') {
+    analysis = `You drove ${dist.toFixed(1)} km in ${time.toFixed(0)} minutes. Your average speed was ${input.velocityKmh.toFixed(1)} km/h. Great job navigating safely!`;
+  } else {
+    const riceCups = cal / 130;
+    analysis = `Amazing workout! You covered ${dist.toFixed(1)} km in ${time.toFixed(0)} minutes. You burned ${cal.toFixed(0)} calories, roughly equivalent to burning off ${riceCups.toFixed(1)} cups of rice.`;
+  }
+  
+  if (input.weather) {
+     if (input.weather.temperature > 32) analysis += " It was a very hot session, make sure to drink extra electrolytes.";
+     else if (input.weather.rain > 2) analysis += " Thanks for braving the rain! Be careful on slippery surfaces.";
+  }
+  return analysis;
 }

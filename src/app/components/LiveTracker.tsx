@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Play, Pause, Square, MapPin, Settings, Activity, Home, Info, Loader2, Footprints, PersonStanding, Bike, Car, Mountain } from 'lucide-react';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import 'leaflet.markercluster';
+import { Play, Pause, Square, MapPin, Settings, Activity, Home, Info, Loader2, Footprints, PersonStanding, Bike, Car, Mountain, AlertCircle, CloudRain, Thermometer } from 'lucide-react';
 import { calculateHaversineDistance } from '../lib/routeUtils';
 import { TravelMode } from '../lib/physics';
+import { PHILIPPINE_MOUNTAINS } from '../lib/mountains';
 import ModeSelector from './ModeSelector';
 import Header from './Header';
 
@@ -16,6 +20,8 @@ interface Position {
 interface LiveTrackerProps {
   mode: TravelMode;
   userWeight: number;
+  weatherInfo?: any;
+  destinationCoords?: { lat: number; lon: number };
   onActivityComplete?: (data: any) => void;
   onToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   onModeChange: (mode: TravelMode) => void;
@@ -24,7 +30,7 @@ interface LiveTrackerProps {
   onSwitchToPlan?: () => void;
 }
 
-export default function LiveTracker({ mode, userWeight, onActivityComplete, onToast, onModeChange, onNavigateHome, onNavigateAbout, onSwitchToPlan }: LiveTrackerProps) {
+export default function LiveTracker({ mode, userWeight, weatherInfo, destinationCoords, onActivityComplete, onToast, onModeChange, onNavigateHome, onNavigateAbout, onSwitchToPlan }: LiveTrackerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const [isTracking, setIsTracking] = useState(false);
@@ -42,6 +48,8 @@ export default function LiveTracker({ mode, userWeight, onActivityComplete, onTo
   const intervalRef = useRef<number | null>(null);
   const routeLayerRef = useRef<L.Polyline | null>(null);
   const currentMarkerRef = useRef<L.Marker | null>(null);
+  const mountainLayersRef = useRef<L.LayerGroup | null>(null);
+  const weatherMarkerRef = useRef<L.Marker | null>(null);
   const [simulationMode, setSimulationMode] = useState(false);
   const simulationIntervalRef = useRef<number | null>(null);
   const [statsExpanded, setStatsExpanded] = useState(true);
@@ -80,6 +88,178 @@ export default function LiveTracker({ mode, userWeight, onActivityComplete, onTo
       }
     };
   }, []);
+
+  // Display destination weather marker
+  useEffect(() => {
+    // Map might not be fully initialized on first render, so we wait briefly
+    const timer = setTimeout(() => {
+      const map = mapInstanceRef.current;
+      if (!map || !destinationCoords || !weatherInfo) return;
+
+      if (weatherMarkerRef.current) {
+        map.removeLayer(weatherMarkerRef.current);
+      }
+
+      const isRaining = weatherInfo.rain > 0;
+      const isHot = weatherInfo.temperature > 32;
+      
+      const iconHtml = isRaining 
+        ? `<div style="background-color: #3b82f6; width: 36px; height: 36px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.6); display: flex; align-items: center; justify-content: center; color: white;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>
+           </div>`
+        : isHot 
+        ? `<div style="background-color: #ef4444; width: 36px; height: 36px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(239, 68, 68, 0.6); display: flex; align-items: center; justify-content: center; color: white;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>
+           </div>`
+        : `<div style="background-color: #f59e0b; width: 36px; height: 36px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(245, 158, 11, 0.6); display: flex; align-items: center; justify-content: center; color: white;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+           </div>`;
+
+      const icon = L.divIcon({
+        className: 'weather-marker',
+        html: iconHtml,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      });
+
+      weatherMarkerRef.current = L.marker([destinationCoords.lat, destinationCoords.lon], { icon, zIndexOffset: 1000 })
+        .bindPopup(`<b>Destination Weather</b><br/>Temp: ${weatherInfo.temperature}°C<br/>Condition: ${isRaining ? 'Raining' : isHot ? 'Extreme Heat' : 'Clear Skies'}`)
+        .addTo(map);
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+      if (weatherMarkerRef.current && mapInstanceRef.current) {
+        mapInstanceRef.current.removeLayer(weatherMarkerRef.current);
+      }
+    };
+  }, [destinationCoords, weatherInfo]);
+
+  // Show mountain markers when hiking mode is selected
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Clear existing mountain markers
+    if (mountainLayersRef.current) {
+      map.removeLayer(mountainLayersRef.current);
+      mountainLayersRef.current = null;
+    }
+
+    if (mode !== 'hiking') return;
+
+    // Create mountain marker icon
+    const mountainIcon = L.divIcon({
+      className: 'mountain-marker',
+      html: `<div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        background: linear-gradient(135deg, #d97706, #b45309);
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        cursor: pointer;
+      ">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m8 3 4 8 5-5 5 15H2L8 3z"/>
+        </svg>
+      </div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -16],
+    });
+
+    // Use MarkerClusterGroup for performance with 1500+ peaks
+    const group = (L as any).markerClusterGroup({
+      maxClusterRadius: 40,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      disableClusteringAtZoom: 12,
+      iconCreateFunction: (cluster: any) => {
+        const count = cluster.getChildCount();
+        const size = count > 100 ? 44 : count > 30 ? 38 : 32;
+        return L.divIcon({
+          html: `<div style="
+            display:flex;align-items:center;justify-content:center;
+            width:${size}px;height:${size}px;
+            background:linear-gradient(135deg,#d97706,#92400e);
+            border-radius:50%;border:3px solid white;
+            box-shadow:0 3px 12px rgba(0,0,0,0.4);
+            color:white;font-weight:800;font-size:${size > 38 ? 14 : 12}px;
+            font-family:system-ui;
+          ">${count}</div>`,
+          className: 'mountain-cluster',
+          iconSize: [size, size],
+          iconAnchor: [size/2, size/2],
+        });
+      }
+    });
+
+    PHILIPPINE_MOUNTAINS.forEach((mt) => {
+      const diffColor = mt.difficulty === 'Easy' ? '#16a34a'
+        : mt.difficulty === 'Moderate' ? '#d97706'
+        : mt.difficulty === 'Difficult' ? '#dc2626'
+        : '#7c3aed';
+
+      const marker = L.marker([mt.peak.lat, mt.peak.lng], { icon: mountainIcon });
+      marker.bindPopup(`
+        <div style="font-family: system-ui, -apple-system, sans-serif; min-width: 200px; padding: 4px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <div style="background: linear-gradient(135deg, #d97706, #b45309); width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m8 3 4 8 5-5 5 15H2L8 3z"/>
+              </svg>
+            </div>
+            <div>
+              <div style="font-weight: 700; font-size: 14px; color: #1f2937;">${mt.name}</div>
+              <div style="font-size: 11px; color: #6b7280;">${mt.province}</div>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+            <div style="background: #fef3c7; padding: 6px 8px; border-radius: 6px;">
+              <div style="font-size: 10px; color: #92400e; font-weight: 600;">Elevation</div>
+              <div style="font-size: 14px; font-weight: 700; color: #78350f;">${mt.elevationMeters}m</div>
+            </div>
+            <div style="background: ${diffColor}15; padding: 6px 8px; border-radius: 6px;">
+              <div style="font-size: 10px; color: ${diffColor}; font-weight: 600;">Difficulty</div>
+              <div style="font-size: 14px; font-weight: 700; color: ${diffColor};">${mt.difficulty}</div>
+            </div>
+            <div style="background: #f0fdf4; padding: 6px 8px; border-radius: 6px;">
+              <div style="font-size: 10px; color: #166534; font-weight: 600;">Trail Distance</div>
+              <div style="font-size: 14px; font-weight: 700; color: #15803d;">${mt.trailDistanceKm} km</div>
+            </div>
+            <div style="background: #eff6ff; padding: 6px 8px; border-radius: 6px;">
+              <div style="font-size: 10px; color: #1e40af; font-weight: 600;">Est. Hike Time</div>
+              <div style="font-size: 14px; font-weight: 700; color: #1d4ed8;">${mt.estimatedHikeHours}h</div>
+            </div>
+          </div>
+          <div style="margin-top: 4px; padding-top: 6px; border-top: 1px solid #e5e7eb;">
+            <div style="font-size: 10px; color: #9ca3af; text-align: center;">
+              🥾 Mountain reference — GPS is tracking your route
+            </div>
+          </div>
+        </div>
+      `, { maxWidth: 280 });
+
+      // Tooltip on hover
+      marker.bindTooltip(`${mt.name} (${mt.elevationMeters}m)`, {
+        permanent: false,
+        direction: 'top',
+        offset: [0, -16],
+        className: 'mountain-tooltip',
+      });
+
+      group.addLayer(marker);
+    });
+
+    group.addTo(map);
+    mountainLayersRef.current = group;
+
+  }, [mode]);
 
 
   // Calculate calories
@@ -557,6 +737,40 @@ export default function LiveTracker({ mode, userWeight, onActivityComplete, onTo
   return (
     <div className="relative w-full h-full bg-white">
       <div ref={mapRef} className="absolute inset-0" />
+
+      {/* Weather Condition Banner */}
+      {weatherInfo && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1001] w-[90%] max-w-sm transition-all duration-300">
+          <div className={`p-3 rounded-xl shadow-lg border-l-4 flex items-center gap-3 backdrop-blur-md ${
+            weatherInfo.rain > 0 
+              ? 'bg-blue-900/90 border-blue-400 text-white' 
+              : weatherInfo.temperature > 32 
+                ? 'bg-red-900/90 border-red-500 text-white'
+                : 'bg-white/95 border-brand-teal text-gray-800'
+          }`}>
+            <div className={`p-2 rounded-full ${weatherInfo.rain > 0 || weatherInfo.temperature > 32 ? 'bg-white/20' : 'bg-brand-teal/10'}`}>
+              {weatherInfo.rain > 0 
+                ? <CloudRain className="w-5 h-5 text-white" /> 
+                : weatherInfo.temperature > 32 
+                  ? <Thermometer className="w-5 h-5 text-white" />
+                  : <Activity className="w-5 h-5 text-brand-teal" />
+              }
+            </div>
+            <div className="flex-1">
+              <p className={`text-xs font-bold uppercase tracking-wide mb-0.5 ${weatherInfo.rain > 0 || weatherInfo.temperature > 32 ? 'opacity-80' : 'text-gray-500'}`}>
+                {weatherInfo.rain > 0 || weatherInfo.temperature > 32 ? 'Live Hazard' : 'Current Conditions'}
+              </p>
+              <p className="text-sm font-medium">
+                {weatherInfo.rain > 0 
+                  ? `Rain detected (${weatherInfo.rain}mm/h). Road may be slippery.` 
+                  : weatherInfo.temperature > 32 
+                    ? `Extreme heat (${weatherInfo.temperature}°C). Hydrate frequently.`
+                    : `Clear skies, ${weatherInfo.temperature}°C. Perfect conditions.`}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Locate Me Button - Top Right */}
       <button

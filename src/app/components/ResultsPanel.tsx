@@ -114,6 +114,19 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
   const penalties = physics.weatherPenalties;
   const totalPenaltyPct = penalties ? Math.round((1 - penalties.total) * 100) : 0;
 
+  // Calculate display metrics for multi-modal routes
+  let displayDistance = route.distance;
+  let displayBaseTime = physics.baseTime ?? route.duration;
+  let displayAdjustedTime = physics.adjustedTime;
+
+  if (result.hikingRoute) {
+    const { carSegment, hikingSegment } = result.hikingRoute;
+    displayDistance = carSegment.distanceKm + hikingSegment.distanceKm;
+    displayBaseTime = carSegment.durationMinutes + hikingSegment.durationMinutes;
+    // Add car time to the weather-adjusted hike time
+    displayAdjustedTime = carSegment.durationMinutes + physics.adjustedTime;
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -121,33 +134,91 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
       transition={{ duration: 0.5 }}
       className="space-y-3"
     >
-      {/* AI Summary Card */}
+      {/* Premium AI Summary Card */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.05 }}
-        className="bg-gradient-to-br from-brand-purple/10 to-brand-teal/10 rounded-xl p-3 border border-brand-purple/20 shadow-lg"
+        className="relative rounded-2xl p-[2px] bg-gradient-to-br from-brand-purple via-brand-teal to-orange-400 shadow-lg shadow-brand-purple/10 overflow-hidden"
       >
-        <div className="flex items-center gap-2 mb-2">
-          <div className="p-1.5 bg-brand-purple rounded-lg">
-            <Sparkles className="w-3.5 h-3.5 text-white" />
+        {/* Animated Background Glow */}
+        <div className="absolute -inset-2 bg-gradient-to-r from-brand-purple via-brand-teal to-orange-400 opacity-20 blur-xl animate-pulse"></div>
+        
+        <div className="relative bg-white/95 backdrop-blur-xl rounded-[14px] p-3.5 flex flex-col h-full">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="relative flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-brand-purple to-brand-teal shadow-inner">
+              <Sparkles className="w-3.5 h-3.5 text-white" />
+              <div className="absolute inset-0 rounded-lg border border-white/40"></div>
+              <div className="absolute inset-0 rounded-lg bg-white/30 animate-ping opacity-20"></div>
+            </div>
+            <span className="text-xs font-black bg-gradient-to-r from-brand-purple to-brand-teal bg-clip-text text-transparent uppercase tracking-widest">
+              FitRoute Intelligence
+            </span>
           </div>
-          <span className="text-xs font-bold text-gray-900">AI Route Analysis</span>
+
+          {aiLoading ? (
+            <div className="flex items-center gap-2 py-4 justify-center">
+              <Loader2 className="w-5 h-5 text-brand-purple animate-spin" />
+              <span className="text-xs font-medium text-gray-500 animate-pulse">Synthesizing data...</span>
+            </div>
+          ) : aiSummary ? (
+            (() => {
+              let parsedAnalysis = aiSummary;
+              let parsedRecommendation = "";
+              const recIndex = aiSummary.indexOf("RECOMMENDATION");
+              if (recIndex !== -1) {
+                parsedAnalysis = aiSummary.substring(0, recIndex).replace("AI ANALYSIS", "").trim();
+                parsedRecommendation = aiSummary.substring(recIndex).replace("RECOMMENDATION", "").trim();
+              } else {
+                parsedAnalysis = aiSummary.replace("AI ANALYSIS", "").trim();
+              }
+
+              return (
+                <div className="space-y-3">
+                  {/* Clean & Distinct Analysis Section */}
+                  <div className="relative bg-white rounded-xl p-3 shadow-sm border border-brand-purple/10 overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-brand-purple to-brand-teal"></div>
+                    <div className="flex items-center gap-1.5 mb-2 pl-2">
+                      <div className="p-1 bg-brand-purple/10 rounded text-brand-purple">
+                        <TrendingDown className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-[10px] font-black text-brand-purple uppercase tracking-widest">
+                        Smart Analysis
+                      </span>
+                    </div>
+                    <p className="text-[11.5px] text-gray-700 leading-relaxed whitespace-pre-wrap relative z-10 font-medium pl-2">
+                      {parsedAnalysis}
+                    </p>
+                  </div>
+                  
+                  {/* Glowing Recommendation Section */}
+                  {parsedRecommendation && (
+                    <div className="relative rounded-xl p-[1px] bg-gradient-to-r from-amber-400 to-orange-500 shadow-md">
+                      <div className="relative bg-gradient-to-br from-amber-50 to-orange-50 rounded-[11px] p-3 h-full">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="p-1 bg-gradient-to-r from-amber-400 to-orange-500 rounded text-white shadow-sm">
+                            <Info className="w-3 h-3" />
+                          </div>
+                          <span className="text-[10px] font-extrabold text-orange-800 uppercase tracking-widest">
+                            Actionable Advice
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-medium text-orange-950/80 leading-relaxed whitespace-pre-wrap">
+                          {parsedRecommendation}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()
+          ) : (
+            <p className="text-[11px] text-gray-500 italic text-center py-2">Summary unavailable</p>
+          )}
         </div>
-        {aiLoading ? (
-          <div className="flex items-center gap-2 py-2">
-            <Loader2 className="w-4 h-4 text-brand-purple animate-spin" />
-            <span className="text-xs text-gray-500">Analyzing your route...</span>
-          </div>
-        ) : aiSummary ? (
-          <p className="text-[11px] text-gray-700 leading-relaxed">{aiSummary}</p>
-        ) : (
-          <p className="text-[11px] text-gray-500 italic">Summary unavailable</p>
-        )}
       </motion.div>
 
-      {/* Hero Metrics Card */}
-      {/* Hiking Route Breakdown Card */}
+      {/* Hiking Mountain Info Card */}
       {result.hikingRoute && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -155,62 +226,85 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
           transition={{ duration: 0.5, delay: 0.08 }}
           className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-3 border border-amber-200 shadow-lg"
         >
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-2">
             <div className="p-1.5 bg-amber-600 rounded-lg">
               <Mountain className="w-4 h-4 text-white" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-gray-900">{result.hikingRoute.mountainName}</h3>
-              <p className="text-[10px] text-gray-500">{result.hikingRoute.mountainProvince} · {result.hikingRoute.elevationMeters}m · {result.hikingRoute.difficulty}</p>
+              <p className="text-[10px] text-gray-500">
+                {result.hikingRoute.mountainProvince} · {result.hikingRoute.elevationMeters}m · {result.hikingRoute.difficulty}
+              </p>
             </div>
           </div>
 
-          <p className="text-xs text-gray-600 mb-3 leading-relaxed">{result.hikingRoute.description}</p>
+
 
           {/* Two-segment breakdown */}
           <div className="space-y-2">
-            {/* Car Segment */}
-            {result.hikingRoute.carSegment.distanceKm > 0 && (
-              <div className="flex items-center gap-2 p-2 bg-white/70 rounded-lg border border-amber-100">
-                <div className="p-1.5 bg-gray-700 rounded-lg">
-                  <Car className="w-3.5 h-3.5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Drive to Trailhead</p>
-                  <p className="text-sm font-bold text-gray-900">
-                    {result.hikingRoute.carSegment.distanceKm} km
-                    <span className="text-xs font-normal text-gray-500 ml-2">~{formatDuration(result.hikingRoute.carSegment.durationMinutes)}</span>
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] text-gray-500">Fuel Cost</p>
-                  <p className="text-sm font-bold text-amber-700">₱{result.hikingRoute.carSegment.fuelCost}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Arrow connector */}
-            {result.hikingRoute.carSegment.distanceKm > 0 && (
-              <div className="flex justify-center">
-                <ArrowRight className="w-4 h-4 text-amber-400 rotate-90" />
-              </div>
-            )}
-
-            {/* Hiking Segment */}
+            {/* Car Segment: Drive to Trailhead */}
             <div className="flex items-center gap-2 p-2 bg-white/70 rounded-lg border border-amber-100">
-              <div className="p-1.5 bg-amber-600 rounded-lg">
-                <Mountain className="w-3.5 h-3.5 text-white" />
+              <div className="p-1.5 bg-gray-700 rounded-lg">
+                <Car className="w-3.5 h-3.5 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Hike to Peak</p>
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Drive to Trailhead</p>
                 <p className="text-sm font-bold text-gray-900">
-                  {result.hikingRoute.hikingSegment.distanceKm} km
-                  <span className="text-xs font-normal text-gray-500 ml-2">~{formatDuration(result.hikingRoute.hikingSegment.durationMinutes)}</span>
+                  {result.hikingRoute.carSegment.distanceKm} km
+                  <span className="text-xs font-normal text-gray-500 ml-2">~{formatDuration(result.hikingRoute.carSegment.durationMinutes)}</span>
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] text-gray-500">Calories</p>
-                <p className="text-sm font-bold text-orange-600">{result.hikingRoute.hikingSegment.calories} kcal</p>
+              {result.hikingRoute.carSegment.fuelCost > 0 && (
+                <div className="text-right">
+                  <p className="text-[10px] text-gray-500">Fuel</p>
+                  <p className="text-sm font-bold text-amber-700">₱{result.hikingRoute.carSegment.fuelCost}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Arrow connector */}
+            <div className="flex justify-center">
+              <ArrowRight className="w-4 h-4 text-amber-400 rotate-90" />
+            </div>
+
+            {/* Hiking Segment: Hike to Destination */}
+            <div className="flex flex-col gap-2 p-2 bg-white/70 rounded-lg border border-amber-100">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-amber-600 rounded-lg">
+                  <Mountain className="w-3.5 h-3.5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Hike to Peak</p>
+                  <p className="text-sm font-bold text-gray-900">
+                    {result.hikingRoute.hikingSegment.distanceKm} km
+                  </p>
+                </div>
+                {totalPenaltyPct > 0 && (
+                  <div className="text-right">
+                    <span className="text-[9px] font-bold text-brand-coral bg-brand-coral/10 px-1.5 py-0.5 rounded-full">
+                      Weather Penalty: +{formatDuration(physics.adjustedTime - (physics.baseTime ?? route.duration))}
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2 mt-1 bg-amber-50/50 p-2 rounded border border-amber-50">
+                <div>
+                  <p className="text-[10px] text-gray-500">Base Time</p>
+                  <p className="text-sm font-bold text-gray-700">{formatDuration(result.hikingRoute.hikingSegment.durationMinutes)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500">Weather-Adjusted</p>
+                  <p className="text-sm font-bold text-gray-900">{formatDuration(physics.adjustedTime)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500">Velocity</p>
+                  <p className="text-sm font-bold text-gray-900">{physics.velocity.toFixed(1)} km/h</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500">Calories</p>
+                  <p className="text-sm font-bold text-orange-600">{result.hikingRoute.hikingSegment.calories} kcal</p>
+                </div>
               </div>
             </div>
           </div>
@@ -223,7 +317,8 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
         </motion.div>
       )}
 
-      <div className="bg-white rounded-xl shadow-lg p-3 border border-gray-100">
+      {!result.hikingRoute && (
+        <div className="bg-white rounded-xl shadow-lg p-3 border border-gray-100">
         {/* Hero Distance Metric */}
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
@@ -233,7 +328,7 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
         >
           <MapPin className="w-6 h-6 text-brand-teal mx-auto mb-1" />
           <div className="text-[10px] font-medium text-gray-600 mb-0.5">Total Distance</div>
-          <div className="text-3xl font-bold text-gray-900">{route.distance.toFixed(2)}</div>
+          <div className="text-3xl font-bold text-gray-900">{displayDistance.toFixed(2)}</div>
           <div className="text-xs text-gray-600">km</div>
         </motion.div>
 
@@ -250,7 +345,7 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
             <div className="flex-1">
               <p className="text-[10px] font-medium text-gray-600">Base Time</p>
               <p className="text-lg font-bold text-gray-900">
-                {formatDuration(physics.baseTime ?? route.duration)}
+                {formatDuration(displayBaseTime)}
               </p>
             </div>
           </motion.div>
@@ -267,7 +362,7 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
             <div className="flex-1">
               <p className="text-[10px] font-medium text-gray-600">Weather-Adjusted Time</p>
               <p className="text-lg font-bold text-gray-900">
-                {formatDuration(physics.adjustedTime)}
+                {formatDuration(displayAdjustedTime)}
               </p>
             </div>
             {totalPenaltyPct > 0 && (
@@ -351,15 +446,14 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
           transition={{ duration: 0.5, delay: 0.6 }}
         >
           <div
-            className={`px-3 py-2 rounded-lg border flex items-center justify-between ${
-              physics.difficultyLevel === 'Easy'
+            className={`px-3 py-2 rounded-lg border flex items-center justify-between ${physics.difficultyLevel === 'Easy'
                 ? 'bg-green-50 border-green-300 text-green-800'
                 : physics.difficultyLevel === 'Moderate'
-                ? 'bg-yellow-50 border-yellow-300 text-yellow-800'
-                : physics.difficultyLevel === 'Hard'
-                ? 'bg-orange-50 border-orange-300 text-orange-800'
-                : 'bg-red-50 border-red-300 text-red-800'
-            }`}
+                  ? 'bg-yellow-50 border-yellow-300 text-yellow-800'
+                  : physics.difficultyLevel === 'Hard'
+                    ? 'bg-orange-50 border-orange-300 text-orange-800'
+                    : 'bg-red-50 border-red-300 text-red-800'
+              }`}
           >
             <span className="font-bold text-sm">{physics.difficultyLevel}</span>
             <span className="text-[10px] font-medium opacity-80">
@@ -368,6 +462,7 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
           </div>
         </motion.div>
       </div>
+      )}
 
       {/* Accordion for Weather, Penalties & Recommendations */}
       <motion.div
@@ -501,48 +596,7 @@ export default function ResultsPanel({ result, mode = 'walking' }: ResultsPanelP
             </AccordionItem>
           )}
 
-          {/* Recommendations Accordion */}
-          {recommendations.length > 0 && (
-            <AccordionItem value="recommendations" className="border border-gray-200 rounded-lg px-2 bg-white">
-              <AccordionTrigger className="text-xs font-bold text-gray-900 hover:no-underline py-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1 bg-brand-purple rounded-lg">
-                    <Info className="w-3 h-3 text-white" />
-                  </div>
-                  <span>Tips</span>
-                  <span className="ml-auto mr-2 px-1.5 py-0.5 bg-brand-purple/10 text-brand-purple text-[10px] font-bold rounded-full">
-                    {recommendations.length}
-                  </span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="space-y-1.5 pt-2 pb-1">
-                  {recommendations.map((rec, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ x: -20, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ duration: 0.3, delay: index * 0.1 }}
-                      className={`flex items-start gap-1.5 p-2 border rounded-lg ${
-                        rec.type === 'warning'
-                          ? 'bg-red-50 border-red-300 text-red-800'
-                          : rec.type === 'info'
-                          ? 'bg-blue-50 border-blue-300 text-blue-800'
-                          : 'bg-green-50 border-green-300 text-green-800'
-                      }`}
-                    >
-                      <div className="mt-0.5">
-                        {rec.type === 'warning' && <AlertCircle className="w-3 h-3" />}
-                        {rec.type === 'info' && <Info className="w-3 h-3" />}
-                        {rec.type === 'success' && <CheckCircle className="w-3 h-3" />}
-                      </div>
-                      <p className="flex-1 font-medium text-[10px] leading-tight">{rec.message}</p>
-                    </motion.div>
-                  ))}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          )}
+          {/* Removed recommendations accordion as it's now in the AI card */}
         </Accordion>
       </motion.div>
     </motion.div>
