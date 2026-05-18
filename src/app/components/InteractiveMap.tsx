@@ -5,6 +5,39 @@ import { MapPin, Loader2, Target, Clock, Navigation, Search, X } from 'lucide-re
 import LoadingSpinner from './LoadingSpinner';
 import type { AnalysisResult } from '../lib/types';
 
+/* ── WMO Weather Code Descriptions ── */
+const WMO_DESCRIPTIONS: Record<number, { label: string; icon: string; color: string }> = {
+  0: { label: 'Clear Sky', icon: '☀️', color: '#f59e0b' },
+  1: { label: 'Mainly Clear', icon: '🌤️', color: '#f59e0b' },
+  2: { label: 'Partly Cloudy', icon: '⛅', color: '#6b7280' },
+  3: { label: 'Overcast', icon: '☁️', color: '#6b7280' },
+  45: { label: 'Foggy', icon: '🌫️', color: '#9ca3af' },
+  48: { label: 'Rime Fog', icon: '🌫️', color: '#9ca3af' },
+  51: { label: 'Light Drizzle', icon: '🌦️', color: '#3b82f6' },
+  53: { label: 'Drizzle', icon: '🌦️', color: '#3b82f6' },
+  55: { label: 'Dense Drizzle', icon: '🌧️', color: '#3b82f6' },
+  61: { label: 'Light Rain', icon: '🌧️', color: '#3b82f6' },
+  63: { label: 'Moderate Rain', icon: '🌧️', color: '#2563eb' },
+  65: { label: 'Heavy Rain', icon: '🌧️', color: '#1d4ed8' },
+  71: { label: 'Light Snow', icon: '🌨️', color: '#93c5fd' },
+  73: { label: 'Moderate Snow', icon: '🌨️', color: '#93c5fd' },
+  75: { label: 'Heavy Snow', icon: '❄️', color: '#93c5fd' },
+  80: { label: 'Rain Showers', icon: '🌦️', color: '#3b82f6' },
+  81: { label: 'Mod. Showers', icon: '🌧️', color: '#2563eb' },
+  82: { label: 'Heavy Showers', icon: '🌧️', color: '#1d4ed8' },
+  95: { label: 'Thunderstorm', icon: '⛈️', color: '#7c3aed' },
+  96: { label: 'T-storm + Hail', icon: '⛈️', color: '#7c3aed' },
+  99: { label: 'T-storm + Hail', icon: '⛈️', color: '#7c3aed' },
+};
+
+const getWeatherInfo = (code: number, temp: number) => {
+  const info = WMO_DESCRIPTIONS[code];
+  if (info) return info;
+  // Fallback based on temperature
+  if (temp > 33) return { label: 'Hot', icon: '🌡️', color: '#ef4444' };
+  return { label: 'Clear', icon: '☀️', color: '#f59e0b' };
+};
+
 interface InteractiveMapProps {
   onRouteRequest: (origin: { lat: number; lon: number }, destination: { lat: number; lon: number }) => void;
   result: AnalysisResult | null;
@@ -218,20 +251,17 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
         setClickMode('destination');
 
         // Fetch hyper-local weather for the user's GPS coordinates
-        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation`)
+        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation,weather_code&timezone=auto`)
           .then(res => res.json())
           .then(data => {
             const temp = Math.round(data.current.temperature_2m);
-            const rain = data.current.precipitation;
-            const isHot = temp > 31;
-            const isRaining = rain > 0;
-            const condition = isRaining ? 'rain' : isHot ? 'hot' : 'clear';
-            const icon = condition === 'rain' ? '🌧️' : condition === 'hot' ? '🌡️' : '☀️';
+            const weatherCode = data.current.weather_code ?? 0;
+            const weather = getWeatherInfo(weatherCode, temp);
             
             marker.setPopupContent(
               `<div style="font-weight: 600; color: #059669; font-size: 14px;">Your Location</div>
                <div style="font-size: 13px; color: #4b5563; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
-                 <span>${icon}</span> <b>${temp}°C</b> - ${condition.toUpperCase()}
+                 <span>${weather.icon}</span> <b>${temp}°C</b> — ${weather.label}
                </div>
                <div style="font-size: 11px; color: #9ca3af; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb;">Click on map to set destination</div>`
             );
@@ -290,20 +320,17 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
         setClickMode('destination');
 
         // Fetch hyper-local weather for the mock coordinates
-        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation`)
+        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation,weather_code&timezone=auto`)
           .then(res => res.json())
           .then(data => {
             const temp = Math.round(data.current.temperature_2m);
-            const rain = data.current.precipitation;
-            const isHot = temp > 31;
-            const isRaining = rain > 0;
-            const condition = isRaining ? 'rain' : isHot ? 'hot' : 'clear';
-            const icon = condition === 'rain' ? '🌧️' : condition === 'hot' ? '🌡️' : '☀️';
+            const weatherCode = data.current.weather_code ?? 0;
+            const weather = getWeatherInfo(weatherCode, temp);
             
             marker.setPopupContent(
               `<div style="font-weight: 600; color: #059669; font-size: 14px;">Mock Location</div>
                <div style="font-size: 13px; color: #4b5563; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
-                 <span>${icon}</span> <b>${temp}°C</b> - ${condition.toUpperCase()}
+                 <span>${weather.icon}</span> <b>${temp}°C</b> — ${weather.label}
                </div>
                <div style="font-size: 11px; color: #9ca3af; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb;">Click on map to set destination</div>`
             );
@@ -364,20 +391,11 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
 
     const renderWeatherMarkers = (stations: any[], source: 'api' | 'mock') => {
       stations.forEach(station => {
-        const isHot = station.temp > 31;
-        const isRaining = station.rain > 0;
-        const condition = isRaining ? 'rain' : isHot ? 'hot' : 'clear';
+        const weather = getWeatherInfo(station.weatherCode ?? 0, station.temp);
+        const markerColor = weather.color;
 
-        const iconHtml = condition === 'rain'
-          ? `<div style="background-color: #3b82f6; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
-               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>
-             </div>`
-          : condition === 'hot'
-          ? `<div style="background-color: #ef4444; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
-               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>
-             </div>`
-          : `<div style="background-color: #f59e0b; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(245, 158, 11, 0.6); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer;">
-               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        const iconHtml = `<div style="background-color: ${markerColor}; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px ${markerColor}99; display: flex; align-items: center; justify-content: center; font-size: 16px; cursor: pointer;">
+               <span>${weather.icon}</span>
              </div>`;
 
         const wIcon = L.divIcon({
@@ -387,14 +405,14 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
           iconAnchor: [16, 16]
         });
 
-        const statusLabel = source === 'mock' ? ' (Offline Mode)' : '';
+        const statusLabel = source === 'mock' ? ' (Offline)' : '';
 
         L.marker([station.lat, station.lon], { icon: wIcon, zIndexOffset: 500 })
           .bindPopup(
             `<div style="font-weight: 600; color: #1f2937; font-size: 14px; margin-bottom: 4px;">${station.name}</div>
              <div style="font-size: 12px; color: #4b5563;">
                <span style="display:inline-block; width: 60px;">Temp:</span> <b>${station.temp}°C</b><br/>
-               <span style="display:inline-block; width: 60px;">Status:</span> <b>${condition.toUpperCase()}${statusLabel}</b>
+               <span style="display:inline-block; width: 60px;">Status:</span> <b>${weather.icon} ${weather.label}${statusLabel}</b>
              </div>`,
             { className: 'custom-popup' }
           )
@@ -404,7 +422,7 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
 
     // Use Promise.all to fetch individual API requests, bypassing Open-Meteo's fragile multi-location query parser
     const fetchPromises = weatherStations.map(station => 
-      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${station.lat}&longitude=${station.lon}&current=temperature_2m,precipitation`)
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${station.lat}&longitude=${station.lon}&current=temperature_2m,precipitation,weather_code&timezone=auto`)
         .then(res => {
           if (!res.ok) throw new Error("API returned " + res.status);
           return res.json();
@@ -414,7 +432,8 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
           return {
             ...station,
             temp: current ? Math.round(current.temperature_2m) : 28,
-            rain: current ? current.precipitation : 0
+            rain: current ? current.precipitation : 0,
+            weatherCode: current ? current.weather_code : 0
           };
         })
     );
@@ -429,7 +448,8 @@ export default function InteractiveMap({ onRouteRequest, result, loading, onRese
         const mockStations = weatherStations.map((station, i) => ({
           ...station,
           temp: [18, 34, 31, 27, 33, 29, 36, 22][i] || 30,
-          rain: [1, 0, 0, 5, 0, 0, 0, 2][i] || 0
+          rain: [1, 0, 0, 5, 0, 0, 0, 2][i] || 0,
+          weatherCode: [61, 0, 2, 63, 1, 0, 0, 80][i] || 0
         }));
         renderWeatherMarkers(mockStations, 'mock');
       });

@@ -12,29 +12,29 @@ import { Badge } from './ui/badge';
 /* ── Team Data ── */
 const TEAM = [
   {
-    name: 'Kean Jerick Villanueva',
+    name: 'Kenneth Bitun',
     role: 'Project Lead & Full-Stack Developer',
     color: '#e8634a',          // brand-coral
     colorDark: '#c94d35',
     image: 'https://pub-c5c927d2e80642fa9e11dbcff8612e19.r2.dev/kenneth.png',
-    bio: 'Led the development from concept to deployment. Built the route planning system, integrated OSRM routing and Open-Meteo weather APIs, and developed the physics engine for speed and calorie calculations.',
-    skills: ['React', 'TypeScript', 'Node.js', 'Git'],
+    bio: 'Led the development from concept to deployment. Built the route planning system, integrated the Open-Meteo weather API, and developed the physics engine for speed and calorie calculations.',
+    skills: ['React', 'TypeScript', 'Node.js', 'Supabase', 'MongoDB'],
     quote: '"I wanted to build something our batchmates would actually use."',
-    stats: { commits: '120+', features: '12', cups: '∞' },
+    stats: { commits: '160+', features: '12', cups: '∞' },
   },
   {
-    name: 'Jasmin Villaber',
+    name: 'Pearl Shanley Roselo',
     role: 'UI/UX Designer & Frontend Developer',
     color: '#7c5cbf',          // brand-purple
     colorDark: '#5a3d99',
     image: '/avatars.png',
-    bio: 'Responsible for the overall look and feel of FitRoute. Created the wireframes in Figma, implemented the responsive layouts, and handled the styling for the landing page, about page, and sidebar components.',
-    skills: ['Figma', 'Tailwind CSS', 'Responsive Design', 'UI Components'],
+    bio: 'Responsible for the overall look and feel of FitRoute. Implemented the responsive layouts, and handled the styling for the landing page, about page, and sidebar components.',
+    skills: ['TailwindCSS', 'Dynamic Layout', 'UI Components'],
     quote: '"If it looks clean and feels smooth, I did my job right."',
     stats: { commits: '85+', features: '8', cups: '∞' },
   },
   {
-    name: 'Reymark Garcia',
+    name: 'Czarina Santos',
     role: 'Quality Tester & Assurance',
     color: '#1a9a7a',          // brand-teal
     colorDark: '#d97706',      // amber
@@ -50,7 +50,7 @@ const TEAM = [
 const CAPS = [
   { icon: Target, title: 'GPS Tracking', desc: 'Real-time position tracking with intelligent speed calculations across 4 activity modes.', color: 'brand-coral' },
   { icon: TrendingUp, title: 'Physics Engine', desc: 'MET-based calorie calculations, weather-adjusted difficulty scoring, and fuel cost estimates.', color: 'brand-purple' },
-  { icon: Compass, title: 'Multi-Source Routing', desc: 'OSRM → Valhalla → OpenRouteService fallback chain with Catmull-Rom spline approximation.', color: 'brand-teal' },
+  { icon: Compass, title: 'Dynamic Routing', desc: 'Robust fallback chain with Catmull-Rom spline approximation for accurate procedural path generation.', color: 'brand-teal' },
   { icon: Flame, title: 'Weather Analytics', desc: 'Live Open-Meteo integration adjusts difficulty factor based on temperature, rain, and wind.', color: 'brand-coral' },
   { icon: Shield, title: 'Privacy First', desc: 'Zero tracking, zero cookies, zero sign-up. All data stays on your device.', color: 'brand-purple' },
   { icon: Sparkles, title: 'Free Forever', desc: 'No subscriptions, no trial periods, no feature gates. Everything is yours.', color: 'brand-teal' },
@@ -64,7 +64,7 @@ export default function AboutPage() {
     <div className="min-h-screen bg-white">
 
       {/* ═══ HERO ═══ */}
-      <section className="relative min-h-[70vh] flex items-center justify-center overflow-hidden">
+      <section className="relative min-h-[50vh] sm:min-h-[70vh] flex items-center justify-center overflow-hidden">
         {/* Background Image — same pattern as Home page */}
         <div className="absolute inset-0">
           <img
@@ -76,7 +76,7 @@ export default function AboutPage() {
           <div className="absolute inset-0 bg-brand-coral/15" />
         </div>
 
-        <div className="relative z-10 container mx-auto px-8 md:px-16 lg:px-24 max-w-5xl text-center py-16">
+        <div className="relative z-10 container mx-auto px-4 sm:px-8 md:px-16 lg:px-24 max-w-5xl text-center py-10 sm:py-16">
           <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
             <motion.div
               initial={{ scale: 0, rotate: -180 }}
@@ -91,7 +91,7 @@ export default function AboutPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="text-5xl sm:text-6xl md:text-7xl font-black text-white mb-4 tracking-tight"
+              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white mb-4 tracking-tight"
             >
               FitRoute
             </motion.h1>
@@ -111,7 +111,7 @@ export default function AboutPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.7 }}
-              className="flex flex-wrap items-center justify-center gap-3"
+              className="flex flex-wrap items-center justify-center gap-2 sm:gap-3"
             >
               {[
                 { icon: Footprints, label: 'Walk', met: '3.5' },
@@ -124,7 +124,7 @@ export default function AboutPage() {
                   key={mode.label}
                   whileHover={{ scale: 1.1, y: -4 }}
                   whileTap={{ scale: 0.95 }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-white/15 backdrop-blur-sm border border-white/25 rounded-xl cursor-pointer hover:bg-white/25 transition-colors"
+                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-white/15 backdrop-blur-sm border border-white/25 rounded-xl cursor-pointer hover:bg-white/25 transition-colors"
                 >
                   <mode.icon className="w-4 h-4 text-white" />
                   <span className="text-sm font-bold text-white">{mode.label}</span>
@@ -144,7 +144,7 @@ export default function AboutPage() {
       </section>
 
       {/* ═══ MISSION ═══ */}
-      <section className="py-16 md:py-24 px-8 md:px-16 lg:px-24">
+      <section className="py-12 sm:py-16 md:py-24 px-4 sm:px-8 md:px-16 lg:px-24">
         <div className="container mx-auto max-w-5xl">
           <div className="grid md:grid-cols-2 gap-10 md:gap-16 items-center">
             <motion.div initial={{ opacity: 0, x: -40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
@@ -166,7 +166,7 @@ export default function AboutPage() {
               {[
                 { value: '5', label: 'Travel Modes', icon: Footprints, color: 'brand-coral' },
                 { value: '10+', label: 'Live Metrics', icon: TrendingUp, color: 'brand-purple' },
-                { value: '3', label: 'Routing APIs', icon: RouteIcon, color: 'brand-teal' },
+                { value: '1,500+', label: 'Mountains', icon: Mountain, color: 'brand-teal' },
                 { value: '∞', label: 'Free Routes', icon: Sparkles, color: 'brand-coral' },
               ].map((stat, i) => (
                 <motion.div
@@ -188,7 +188,7 @@ export default function AboutPage() {
       </section>
 
       {/* ═══ CAPABILITIES — Large interactive grid ═══ */}
-      <section className="py-16 md:py-24 px-8 md:px-16 lg:px-24 bg-gray-50">
+      <section className="py-12 sm:py-16 md:py-24 px-4 sm:px-8 md:px-16 lg:px-24 bg-gray-50">
         <div className="container mx-auto max-w-5xl">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-14">
             <Badge className="bg-brand-purple/10 text-brand-purple border border-brand-purple/20 font-bold mb-4 text-xs px-3 py-1">CAPABILITIES</Badge>
@@ -244,7 +244,7 @@ export default function AboutPage() {
       </section>
 
       {/* ═══ TEAM — Full-image cards, hover-reveal details on right ═══ */}
-      <section className="py-16 md:py-24 px-8 md:px-16 lg:px-24 bg-white">
+      <section className="py-12 sm:py-16 md:py-24 px-4 sm:px-8 md:px-16 lg:px-24 bg-white">
         <div className="container mx-auto max-w-6xl">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-14">
             <Badge className="bg-brand-teal/10 text-brand-teal border border-brand-teal/20 font-bold mb-4 text-xs px-3 py-1">THE TEAM</Badge>
@@ -267,7 +267,7 @@ export default function AboutPage() {
                 }}
                 className="group cursor-pointer sm:cursor-default"
               >
-                <div className="relative rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl border-2 border-gray-100 hover:border-brand-coral/30 transition-all h-[420px] md:h-[480px]">
+                <div className="relative rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl border-2 border-gray-100 hover:border-brand-coral/30 transition-all h-[340px] sm:h-[420px] md:h-[480px]">
                   {/* Full-bleed image */}
                   <img
                     src={member.image}
@@ -410,7 +410,7 @@ export default function AboutPage() {
       </AnimatePresence>
 
       {/* ═══ TECH STACK ═══ */}
-      <section className="py-16 md:py-20 px-8 md:px-16 lg:px-24 bg-gray-50">
+      <section className="py-12 sm:py-16 md:py-20 px-4 sm:px-8 md:px-16 lg:px-24 bg-gray-50">
         <div className="container mx-auto max-w-5xl">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-10">
             <Badge className="bg-brand-coral/10 text-brand-coral border border-brand-coral/20 font-bold mb-4 text-xs px-3 py-1">TECH STACK</Badge>
@@ -420,11 +420,11 @@ export default function AboutPage() {
 
           <div className="relative overflow-hidden py-6 rounded-2xl">
             <style>{`
-              @keyframes scrollTech { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+              @keyframes scrollTech { 0% { transform: translateX(-50%); } 100% { transform: translateX(0); } }
               .scroll-tech { animation: scrollTech 28s linear infinite; }
               .scroll-tech:hover { animation-play-state: paused; }
             `}</style>
-            <div className="flex scroll-tech gap-6">
+            <div className="flex scroll-tech w-max">
               {[
                 { name: 'React', logo: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg' },
                 { name: 'TypeScript', logo: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-original.svg' },
@@ -443,7 +443,7 @@ export default function AboutPage() {
                 { name: 'Git', logo: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/git/git-original.svg' },
                 { name: 'Vite', logo: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vitejs/vitejs-original.svg' },
               ].map((tech, index) => (
-                <motion.div key={index} whileHover={{ scale: 1.15, y: -6 }} className="flex-shrink-0 group cursor-pointer">
+                <motion.div key={index} whileHover={{ scale: 1.15, y: -6 }} className="flex-shrink-0 pr-6 group cursor-pointer">
                   <div className="w-16 h-16 md:w-20 md:h-20 bg-white rounded-2xl border border-gray-200 group-hover:border-brand-coral/30 shadow-sm group-hover:shadow-xl p-3.5 flex items-center justify-center transition-all duration-300">
                     <img src={tech.logo} alt={tech.name} className="w-full h-full object-contain" />
                   </div>

@@ -8,6 +8,38 @@ import type { AnalysisResult } from '../lib/types';
 import type { TravelMode } from '../lib/physics';
 import { PHILIPPINE_MOUNTAINS } from '../lib/mountains';
 
+/* ── WMO Weather Code Descriptions ── */
+const WMO_DESCRIPTIONS: Record<number, { label: string; icon: string }> = {
+  0: { label: 'Clear Sky', icon: '☀️' },
+  1: { label: 'Mainly Clear', icon: '🌤️' },
+  2: { label: 'Partly Cloudy', icon: '⛅' },
+  3: { label: 'Overcast', icon: '☁️' },
+  45: { label: 'Foggy', icon: '🌫️' },
+  48: { label: 'Rime Fog', icon: '🌫️' },
+  51: { label: 'Light Drizzle', icon: '🌦️' },
+  53: { label: 'Drizzle', icon: '🌦️' },
+  55: { label: 'Dense Drizzle', icon: '🌧️' },
+  61: { label: 'Light Rain', icon: '🌧️' },
+  63: { label: 'Moderate Rain', icon: '🌧️' },
+  65: { label: 'Heavy Rain', icon: '🌧️' },
+  71: { label: 'Light Snow', icon: '🌨️' },
+  73: { label: 'Moderate Snow', icon: '🌨️' },
+  75: { label: 'Heavy Snow', icon: '❄️' },
+  80: { label: 'Rain Showers', icon: '🌦️' },
+  81: { label: 'Mod. Showers', icon: '🌧️' },
+  82: { label: 'Heavy Showers', icon: '🌧️' },
+  95: { label: 'Thunderstorm', icon: '⛈️' },
+  96: { label: 'T-storm + Hail', icon: '⛈️' },
+  99: { label: 'T-storm + Hail', icon: '⛈️' },
+};
+
+const getWeatherInfo = (code: number, temp: number) => {
+  const info = WMO_DESCRIPTIONS[code];
+  if (info) return info;
+  if (temp > 33) return { label: 'Hot', icon: '🌡️' };
+  return { label: 'Clear', icon: '☀️' };
+};
+
 interface SimpleMapProps {
   result: AnalysisResult | null;
   originCoords?: { lat: number; lon: number } | null;
@@ -37,7 +69,7 @@ async function reverseGeocode(lat: number, lon: number): Promise<string> {
  */
 async function fetchRouteWeatherPoints(
   coordinates: [number, number][]
-): Promise<Array<{ lat: number; lon: number; temp: number; rain: number; humidity: number }>> {
+): Promise<Array<{ lat: number; lon: number; temp: number; rain: number; humidity: number; weatherCode: number }>> {
   if (coordinates.length < 2) return [];
 
   // Sample 3–5 points along the route (origin, midpoints, destination)
@@ -59,7 +91,7 @@ async function fetchRouteWeatherPoints(
     const results = await Promise.all(
       points.map(async (point) => {
         try {
-          const url = `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}&current=temperature_2m,precipitation,relative_humidity_2m&timezone=auto`;
+          const url = `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}&current=temperature_2m,precipitation,relative_humidity_2m,weather_code&timezone=auto`;
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 3000);
           const res = await fetch(url, { signal: controller.signal });
@@ -72,6 +104,7 @@ async function fetchRouteWeatherPoints(
             temp: data.current?.temperature_2m ?? 28,
             rain: data.current?.precipitation ?? 0,
             humidity: data.current?.relative_humidity_2m ?? 65,
+            weatherCode: data.current?.weather_code ?? 0,
           };
         } catch {
           return {
@@ -80,6 +113,7 @@ async function fetchRouteWeatherPoints(
             temp: 28,
             rain: 0,
             humidity: 65,
+            weatherCode: 0,
           };
         }
       })
@@ -472,12 +506,13 @@ export default function SimpleMap({ result, originCoords, destCoords, hikingTrai
           const map = mapInstanceRef.current!;
 
           // Determine color based on conditions
-          const isRainy = wp.rain > 1;
+          const isRainy = wp.rain > 0 || (wp.weatherCode >= 51 && wp.weatherCode <= 82);
           const isHot = wp.temp > 32;
           const isVeryHot = wp.temp > 35;
+          const isThunder = wp.weatherCode >= 95;
 
-          // Skip points with mild conditions (only show notable weather)
-          if (!isRainy && !isHot) return;
+          // Get accurate description
+          const weather = getWeatherInfo(wp.weatherCode, wp.temp);
 
           // Determine overlay style
           let color: string;
@@ -485,30 +520,37 @@ export default function SimpleMap({ result, originCoords, destCoords, hikingTrai
           let label: string;
           let radius: number;
 
-          if (isRainy && isHot) {
-            // Both rain and heat
+          if (isThunder) {
+            color = '#7c3aed';
+            fillColor = '#8b5cf6';
+            label = `${weather.icon} ${wp.temp}°C — ${weather.label}`;
+            radius = 800;
+          } else if (isRainy && isHot) {
             color = '#7c3aed';
             fillColor = '#7c3aed';
-            label = `🌧️🔥 ${wp.temp}°C, ${wp.rain.toFixed(1)}mm rain`;
+            label = `${weather.icon} ${wp.temp}°C — ${weather.label}`;
             radius = 800;
           } else if (isRainy) {
-            // Rain zone
             color = '#3b82f6';
             fillColor = '#60a5fa';
-            label = `🌧️ ${wp.rain.toFixed(1)} mm/h rain`;
+            label = `${weather.icon} ${wp.rain.toFixed(1)} mm/h — ${weather.label}`;
             radius = 600 + wp.rain * 30;
           } else if (isVeryHot) {
-            // Extreme heat
             color = '#dc2626';
             fillColor = '#f87171';
-            label = `🔥 ${wp.temp}°C — Extreme heat`;
+            label = `${weather.icon} ${wp.temp}°C — ${weather.label}`;
             radius = 800;
-          } else {
-            // Hot
+          } else if (isHot) {
             color = '#f59e0b';
             fillColor = '#fbbf24';
-            label = `☀️ ${wp.temp}°C — Hot`;
+            label = `${weather.icon} ${wp.temp}°C — ${weather.label}`;
             radius = 500;
+          } else {
+            // Mild / Clear
+            color = '#10b981';
+            fillColor = '#34d399';
+            label = `${weather.icon} ${wp.temp}°C — ${weather.label}`;
+            radius = 400;
           }
 
           // Add circle overlay

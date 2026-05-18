@@ -74,7 +74,7 @@ export default function Sidebar({
   const [destCoords, setDestCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
 
-  const searchTimeoutRef = useRef<{origin: NodeJS.Timeout | null, dest: NodeJS.Timeout | null}>({
+  const searchTimeoutRef = useRef<{ origin: NodeJS.Timeout | null, dest: NodeJS.Timeout | null }>({
     origin: null,
     dest: null
   });
@@ -163,9 +163,9 @@ export default function Sidebar({
       (position) => {
         setIsLocating(false);
         const { latitude: lat, longitude: lng } = position.coords;
-        setOriginSearch(`Current Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
+        setOriginSearch('Current Location');
         setOriginCoords({ lat, lon: lng });
-        onPinPlaced('origin', { lat, lon: lng }, `Current Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
+        onPinPlaced('origin', { lat, lon: lng }, 'Current Location');
 
         if (destCoords) {
           onRouteRequest({ lat, lon: lng }, destCoords);
@@ -291,11 +291,10 @@ export default function Sidebar({
             {/* Pin on map */}
             <button
               onClick={() => onPinModeChange(pinMode === 'origin' ? null : 'origin')}
-              className={`p-2.5 rounded-lg transition-all flex-shrink-0 border-2 ${
-                pinMode === 'origin'
+              className={`p-2.5 rounded-lg transition-all flex-shrink-0 border-2 ${pinMode === 'origin'
                   ? 'bg-emerald-500 text-white border-emerald-500'
                   : 'bg-white text-emerald-600 border-emerald-200 hover:border-emerald-400'
-              }`}
+                }`}
               title="Pin start on map"
             >
               <Pin className="w-4 h-4" />
@@ -392,11 +391,10 @@ export default function Sidebar({
           {/* Pin on map */}
           <button
             onClick={() => onPinModeChange(pinMode === 'dest' ? null : 'dest')}
-            className={`p-2.5 rounded-lg transition-all flex-shrink-0 border-2 ${
-              pinMode === 'dest'
+            className={`p-2.5 rounded-lg transition-all flex-shrink-0 border-2 ${pinMode === 'dest'
                 ? 'bg-red-500 text-white border-red-500'
                 : 'bg-white text-red-500 border-red-200 hover:border-red-400'
-            }`}
+              }`}
             title="Pin destination on map"
           >
             <Pin className="w-4 h-4" />
@@ -412,11 +410,10 @@ export default function Sidebar({
             <button
               key={m}
               onClick={() => onModeChange(m)}
-              className={`p-3 rounded-lg transition-all flex flex-col items-center gap-1 ${
-                mode === m
+              className={`p-3 rounded-lg transition-all flex flex-col items-center gap-1 ${mode === m
                   ? 'bg-brand-coral text-white shadow-md'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+                }`}
               title={m.charAt(0).toUpperCase() + m.slice(1)}
             >
               {m === 'walking' && <Footprints className="w-5 h-5" />}
@@ -480,7 +477,7 @@ export default function Sidebar({
           )}
 
           {!loading && result && (
-              <ResultsPanel result={result} mode={mode} />
+            <ResultsPanel result={result} mode={mode} />
           )}
         </div>
       </div>

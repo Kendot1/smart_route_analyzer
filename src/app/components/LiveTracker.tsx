@@ -100,12 +100,14 @@ export default function LiveTracker({ mode, userWeight, weatherInfo, destination
         map.removeLayer(weatherMarkerRef.current);
       }
 
-      const isRaining = weatherInfo.rain > 0;
+      // Use weatherCode for more accurate icons if available, otherwise fallback to rain/heat logic
+      const isRaining = weatherInfo.rain > 0 || (weatherInfo.weatherCode >= 51 && weatherInfo.weatherCode <= 82);
       const isHot = weatherInfo.temperature > 32;
+      const isThunder = weatherInfo.weatherCode >= 95;
       
-      const iconHtml = isRaining 
-        ? `<div style="background-color: #3b82f6; width: 36px; height: 36px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.6); display: flex; align-items: center; justify-content: center; color: white;">
-             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>
+      const iconHtml = isRaining || isThunder
+        ? `<div style="background-color: ${isThunder ? '#7c3aed' : '#3b82f6'}; width: 36px; height: 36px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px ${isThunder ? 'rgba(124, 58, 237, 0.6)' : 'rgba(59, 130, 246, 0.6)'}; display: flex; align-items: center; justify-content: center; color: white;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${isThunder ? '<path d="M19 16.9A5 5 0 1 0 18 7h-1.26a8 8 0 1 0-11.62 9"/><polyline points="13 11 9 17 15 17 11 23"/>' : '<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/>'}</svg>
            </div>`
         : isHot 
         ? `<div style="background-color: #ef4444; width: 36px; height: 36px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(239, 68, 68, 0.6); display: flex; align-items: center; justify-content: center; color: white;">
@@ -123,7 +125,7 @@ export default function LiveTracker({ mode, userWeight, weatherInfo, destination
       });
 
       weatherMarkerRef.current = L.marker([destinationCoords.lat, destinationCoords.lon], { icon, zIndexOffset: 1000 })
-        .bindPopup(`<b>Destination Weather</b><br/>Temp: ${weatherInfo.temperature}°C<br/>Condition: ${isRaining ? 'Raining' : isHot ? 'Extreme Heat' : 'Clear Skies'}`)
+        .bindPopup(`<b>Destination Weather</b><br/>Temp: ${weatherInfo.temperature}°C<br/>Condition: <span style="text-transform: capitalize;">${weatherInfo.description || (isRaining ? 'Raining' : isHot ? 'Extreme Heat' : 'Clear Skies')}</span>`)
         .addTo(map);
     }, 500);
 
@@ -742,14 +744,16 @@ export default function LiveTracker({ mode, userWeight, weatherInfo, destination
       {weatherInfo && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1001] w-[90%] max-w-sm transition-all duration-300">
           <div className={`p-3 rounded-xl shadow-lg border-l-4 flex items-center gap-3 backdrop-blur-md ${
-            weatherInfo.rain > 0 
+            weatherInfo.rain > 0 || (weatherInfo.weatherCode >= 51 && weatherInfo.weatherCode <= 82) || weatherInfo.weatherCode >= 95
               ? 'bg-blue-900/90 border-blue-400 text-white' 
               : weatherInfo.temperature > 32 
                 ? 'bg-red-900/90 border-red-500 text-white'
                 : 'bg-white/95 border-brand-teal text-gray-800'
           }`}>
-            <div className={`p-2 rounded-full ${weatherInfo.rain > 0 || weatherInfo.temperature > 32 ? 'bg-white/20' : 'bg-brand-teal/10'}`}>
-              {weatherInfo.rain > 0 
+            <div className={`p-2 rounded-full ${weatherInfo.rain > 0 || weatherInfo.weatherCode >= 51 || weatherInfo.temperature > 32 ? 'bg-white/20' : 'bg-brand-teal/10'}`}>
+              {weatherInfo.weatherCode >= 95
+                ? <AlertCircle className="w-5 h-5 text-white" />
+                : weatherInfo.rain > 0 || (weatherInfo.weatherCode >= 51 && weatherInfo.weatherCode <= 82)
                 ? <CloudRain className="w-5 h-5 text-white" /> 
                 : weatherInfo.temperature > 32 
                   ? <Thermometer className="w-5 h-5 text-white" />
@@ -757,15 +761,17 @@ export default function LiveTracker({ mode, userWeight, weatherInfo, destination
               }
             </div>
             <div className="flex-1">
-              <p className={`text-xs font-bold uppercase tracking-wide mb-0.5 ${weatherInfo.rain > 0 || weatherInfo.temperature > 32 ? 'opacity-80' : 'text-gray-500'}`}>
-                {weatherInfo.rain > 0 || weatherInfo.temperature > 32 ? 'Live Hazard' : 'Current Conditions'}
+              <p className={`text-xs font-bold uppercase tracking-wide mb-0.5 ${weatherInfo.rain > 0 || weatherInfo.weatherCode >= 51 || weatherInfo.temperature > 32 ? 'opacity-80' : 'text-gray-500'}`}>
+                {weatherInfo.rain > 0 || weatherInfo.weatherCode >= 51 || weatherInfo.temperature > 32 ? 'Live Hazard' : 'Current Conditions'}
               </p>
-              <p className="text-sm font-medium">
-                {weatherInfo.rain > 0 
-                  ? `Rain detected (${weatherInfo.rain}mm/h). Road may be slippery.` 
-                  : weatherInfo.temperature > 32 
-                    ? `Extreme heat (${weatherInfo.temperature}°C). Hydrate frequently.`
-                    : `Clear skies, ${weatherInfo.temperature}°C. Perfect conditions.`}
+              <p className="text-sm font-medium capitalize">
+                {weatherInfo.description 
+                  ? `${weatherInfo.description}, ${weatherInfo.temperature}°C`
+                  : weatherInfo.rain > 0 
+                    ? `Rain detected (${weatherInfo.rain}mm/h). Road slippery.` 
+                    : weatherInfo.temperature > 32 
+                      ? `Extreme heat (${weatherInfo.temperature}°C). Hydrate.`
+                      : `Clear skies, ${weatherInfo.temperature}°C. Perfect.`}
               </p>
             </div>
           </div>

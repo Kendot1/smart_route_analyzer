@@ -614,6 +614,8 @@ export default function App() {
         rain: weather.rain,
         windSpeed: weather.windSpeed,
         humidity: weather.humidity,
+        weatherCode: weatherData.current.weather_code,
+        description: weather.description,
       };
 
       const physics = calculatePhysics(
